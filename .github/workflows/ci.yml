@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [ '**' ]
+  pull_request:
+    branches: [ '**' ]
+
+env:
+  DOTNET_VERSION: '8.0.x'
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore dependencies
+      run: dotnet restore Scraper.sln
+
+    - name: Build
+      run: dotnet build Scraper.sln --configuration Release --no-restore
+
+    - name: Publish
+      run: dotnet publish src/Scraper.Api/Scraper.Api.csproj --configuration Release --output ./publish --no-build
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: published-app
+        path: ./publish
+        retention-days: 1
+
