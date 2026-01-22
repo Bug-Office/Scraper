@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Caching.Memory;
+using Scraper.Api.Models;
 using Scraper.Api.Services;
 using Scraper.Core.Interfaces;
 using Scraper.Core.Models;
@@ -85,6 +86,8 @@ app.MapGet("/api", async (HttpContext context, TorznabService torznabService, IC
     var season = queryParams["season"].ToString();
     var episode = queryParams["episode"].ToString();
     var apiKey = queryParams["apikey"].ToString();
+    var cat = queryParams["cat"].ToString(); // Categories (e.g., "2000,2010,2020")
+    var extended = queryParams["extended"].ToString(); // Extended attributes
 
     // Validate API key if configured
     var config = await configService.GetConfigurationAsync();
@@ -92,6 +95,7 @@ app.MapGet("/api", async (HttpContext context, TorznabService torznabService, IC
     {
         if (string.IsNullOrEmpty(apiKey) || apiKey != config.ApiKey)
         {
+            Log.Warning("Invalid or missing API key");
             return Results.Unauthorized();
         }
     }
@@ -102,10 +106,25 @@ app.MapGet("/api", async (HttpContext context, TorznabService torznabService, IC
         return Results.Content(GetCapsXml(), "application/xml");
     }
 
-    // Handle search endpoints
+    // Handle validation/test requests without query
+    // Prowlarr/Radarr/Sonarr send requests without 'q' or 'imdbid' to validate the indexer
     if (string.IsNullOrEmpty(q) && string.IsNullOrEmpty(imdbId))
     {
-        return Results.BadRequest("Query parameter 'q' or 'imdbid' is required");
+        Log.Information("Validation request received (no query) - returning empty RSS feed");
+        // Return empty but valid RSS feed for validation
+        var emptyRss = new TorznabRss
+        {
+            Channel = new TorznabChannel
+            {
+                Title = "Media Scraper",
+                Description = "Torznab-compatible media scraper",
+                Link = string.Empty,
+                Language = "en-us",
+                Items = new List<TorznabItem>()
+            }
+        };
+        var xml = torznabService.SerializeToXml(emptyRss);
+        return Results.Content(xml, "application/xml");
     }
 
     // Determine media type
@@ -119,8 +138,22 @@ app.MapGet("/api", async (HttpContext context, TorznabService torznabService, IC
         mediaType = MediaType.TvShow;
     }
 
-    // Build cache key
-    var cacheKey = $"torznab_{t}_{q}_{imdbId}_{season}_{episode}";
+    // Parse categories if provided (filter results by category)
+    var categories = new List<int>();
+    if (!string.IsNullOrEmpty(cat))
+    {
+        var catParts = cat.Split(',', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var catPart in catParts)
+        {
+            if (int.TryParse(catPart.Trim(), out var catId))
+            {
+                categories.Add(catId);
+            }
+        }
+    }
+
+    // Build cache key (include categories for proper caching)
+    var cacheKey = $"torznab_{t}_{q}_{imdbId}_{season}_{episode}_{cat}";
 
     // Check cache
     if (cache.TryGetValue(cacheKey, out string? cachedXml))
@@ -135,6 +168,24 @@ app.MapGet("/api", async (HttpContext context, TorznabService torznabService, IC
         var rss = await torznabService.SearchAsync(q, 
             string.IsNullOrEmpty(imdbId) ? null : imdbId, 
             mediaType);
+
+        // Filter by categories if specified
+        if (categories.Any())
+        {
+            rss.Channel.Items = rss.Channel.Items.Where(item =>
+            {
+                // Category 2000 = Movies, 5000 = TV
+                // Categories is a List<string>, so we need to parse them
+                foreach (var catStr in item.Categories ?? new List<string>())
+                {
+                    if (int.TryParse(catStr, out var catId) && categories.Contains(catId))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }).ToList();
+        }
 
         // Serialize to XML
         var xml = torznabService.SerializeToXml(rss);
