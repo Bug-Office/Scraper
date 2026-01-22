@@ -57,7 +57,7 @@ public class TorznabService
             PubDate = item.PublishDate.ToString("ddd, dd MMM yyyy HH:mm:ss UTC", CultureInfo.InvariantCulture),
             Description = item.Description ?? item.Title,
             Size = item.FileSize,
-            Categories = GetCategories(item.Type),
+            Categories = GetCategories(item.Type, item.Resolution),
             Attributes = GetAttributes(item)
         };
 
@@ -75,14 +75,73 @@ public class TorznabService
         return torznabItem;
     }
 
-    private List<string> GetCategories(MediaType type)
+    private List<string> GetCategories(MediaType type, string? resolution = null)
     {
-        return type switch
+        var categories = new List<string>();
+        
+        // Base category based on media type
+        if (type == MediaType.Movie)
         {
-            MediaType.Movie => new List<string> { "2000" }, // Movies
-            MediaType.TvShow => new List<string> { "5000" }, // TV
-            _ => new List<string> { "2000", "5000" } // Both
-        };
+            categories.Add("2000"); // Movies base category
+            
+            // Add subcategories based on resolution
+            if (!string.IsNullOrEmpty(resolution))
+            {
+                var res = resolution.ToLowerInvariant();
+                if (res.Contains("2160") || res.Contains("4k") || res.Contains("uhd"))
+                {
+                    categories.Add("2045"); // Movies/UHD
+                }
+                else if (res.Contains("1080") || res.Contains("720"))
+                {
+                    categories.Add("2040"); // Movies/HD
+                }
+                else
+                {
+                    categories.Add("2030"); // Movies/SD
+                }
+            }
+            else
+            {
+                // Default to HD if resolution unknown
+                categories.Add("2040"); // Movies/HD
+            }
+        }
+        else if (type == MediaType.TvShow)
+        {
+            categories.Add("5000"); // TV base category
+            
+            // Add subcategories based on resolution
+            if (!string.IsNullOrEmpty(resolution))
+            {
+                var res = resolution.ToLowerInvariant();
+                if (res.Contains("2160") || res.Contains("4k") || res.Contains("uhd"))
+                {
+                    categories.Add("5045"); // TV/UHD
+                }
+                else if (res.Contains("1080") || res.Contains("720"))
+                {
+                    categories.Add("5040"); // TV/HD
+                }
+                else
+                {
+                    categories.Add("5030"); // TV/SD
+                }
+            }
+            else
+            {
+                // Default to HD if resolution unknown
+                categories.Add("5040"); // TV/HD
+            }
+        }
+        else
+        {
+            // Unknown type - include both base categories
+            categories.Add("2000"); // Movies
+            categories.Add("5000"); // TV
+        }
+        
+        return categories;
     }
 
     private List<TorznabAttribute> GetAttributes(MediaItem item)

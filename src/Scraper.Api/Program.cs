@@ -172,19 +172,39 @@ app.MapGet("/api", async (HttpContext context, TorznabService torznabService, IC
         // Filter by categories if specified
         if (categories.Any())
         {
+            var originalCount = rss.Channel.Items.Count;
             rss.Channel.Items = rss.Channel.Items.Where(item =>
             {
                 // Category 2000 = Movies, 5000 = TV
                 // Categories is a List<string>, so we need to parse them
-                foreach (var catStr in item.Categories ?? new List<string>())
+                var itemCategories = item.Categories ?? new List<string>();
+                
+                // If item has no categories, include it (shouldn't happen, but be safe)
+                if (!itemCategories.Any())
                 {
-                    if (int.TryParse(catStr, out var catId) && categories.Contains(catId))
+                    Log.Warning("Item {Title} has no categories", item.Title);
+                    return true; // Include items without categories
+                }
+                
+                // Check if any of the item's categories match the requested categories
+                foreach (var catStr in itemCategories)
+                {
+                    if (int.TryParse(catStr, out var catId))
                     {
-                        return true;
+                        // Match exact category or parent category (e.g., 2040 matches 2000)
+                        if (categories.Contains(catId) || 
+                            (catId >= 2000 && catId < 3000 && categories.Contains(2000)) || // Movies subcategory
+                            (catId >= 5000 && catId < 6000 && categories.Contains(5000)))  // TV subcategory
+                        {
+                            return true;
+                        }
                     }
                 }
                 return false;
             }).ToList();
+            
+            Log.Information("Filtered {OriginalCount} items to {FilteredCount} items based on categories {Categories}", 
+                originalCount, rss.Channel.Items.Count, string.Join(",", categories));
         }
 
         // Serialize to XML
@@ -244,11 +264,25 @@ app.MapPost("/api/config", async (HttpRequest request, IConfigurationService con
             return Results.BadRequest("Invalid configuration data: deserialization returned null");
         }
         
-        // Ensure API key is preserved if it exists in current config
+        // Ensure API key is preserved - always use existing key if new one is empty
         var currentConfig = await configService.GetConfigurationAsync();
-        if (string.IsNullOrWhiteSpace(config.ApiKey) && !string.IsNullOrWhiteSpace(currentConfig.ApiKey))
+        if (string.IsNullOrWhiteSpace(config.ApiKey))
         {
-            config.ApiKey = currentConfig.ApiKey;
+            // If no API key provided, use existing one or generate new
+            if (!string.IsNullOrWhiteSpace(currentConfig.ApiKey))
+            {
+                config.ApiKey = currentConfig.ApiKey;
+                Log.Information("Preserved existing API key");
+            }
+            else
+            {
+                // Generate new API key if none exists
+                const string chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+                var random = new Random();
+                config.ApiKey = new string(Enumerable.Repeat(chars, 32)
+                    .Select(s => s[random.Next(s.Length)]).ToArray());
+                Log.Information("Generated new API key");
+            }
         }
         
         Log.Information("Saving configuration with {ScraperCount} scrapers", config.Scrapers?.Count ?? 0);
@@ -348,7 +382,21 @@ static string GetCapsXml()
     </searching>
     <categories>
         <category id=""2000"" name=""Movies"" />
+        <category id=""2010"" name=""Movies/Foreign"" />
+        <category id=""2020"" name=""Movies/Other"" />
+        <category id=""2030"" name=""Movies/SD"" />
+        <category id=""2040"" name=""Movies/HD"" />
+        <category id=""2045"" name=""Movies/UHD"" />
+        <category id=""2050"" name=""Movies/BluRay"" />
+        <category id=""2060"" name=""Movies/DVD"" />
         <category id=""5000"" name=""TV"" />
+        <category id=""5010"" name=""TV/Foreign"" />
+        <category id=""5020"" name=""TV/Other"" />
+        <category id=""5030"" name=""TV/SD"" />
+        <category id=""5040"" name=""TV/HD"" />
+        <category id=""5045"" name=""TV/UHD"" />
+        <category id=""5050"" name=""TV/BluRay"" />
+        <category id=""5060"" name=""TV/DVD"" />
     </categories>
 </caps>";
 }
