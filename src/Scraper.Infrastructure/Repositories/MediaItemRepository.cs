@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 using Scraper.Core.Models;
 using Scraper.Infrastructure.Data;
 using Scraper.Infrastructure.Data.Entities;
@@ -92,7 +93,8 @@ public class MediaItemRepository : IMediaItemRepository
             existing.FileSize = item.FileSize;
             existing.PublishDate = item.PublishDate;
             existing.Resolution = item.Resolution;
-            existing.Language = (int)item.Language;
+            existing.Format = item.Format;
+            existing.LanguagesJson = JsonSerializer.Serialize(item.Languages ?? new List<MediaLanguage>());
             existing.Type = (int)item.Type;
             existing.ImdbId = item.ImdbId;
             existing.Description = item.Description;
@@ -141,7 +143,8 @@ public class MediaItemRepository : IMediaItemRepository
             entity.FileSize = item.FileSize;
             entity.PublishDate = item.PublishDate;
             entity.Resolution = item.Resolution;
-            entity.Language = (int)item.Language;
+            entity.Format = item.Format;
+            entity.LanguagesJson = JsonSerializer.Serialize(item.Languages ?? new List<MediaLanguage>());
             entity.Type = (int)item.Type;
             entity.ImdbId = item.ImdbId;
             entity.Description = item.Description;

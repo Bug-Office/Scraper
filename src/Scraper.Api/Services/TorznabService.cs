@@ -105,7 +105,7 @@ public class TorznabService
 
         var fileSize = item.FileSize > 0
             ? item.FileSize
-            : 15_000_000_000; // fallback seguro
+            : 4_000_000_000; // fallback seguro
 
         var torznabItem = new TorznabItem
         {
@@ -114,11 +114,13 @@ public class TorznabService
 
             Guid = new TorznabGuid
             {
-                IsPermaLink = false,
-                Value = ExtractBtih(magnet)
+                //IsPermaLink = false,
+                Value = item.PageUrl
             },
 
             Link = magnet,
+
+            Comments = item.PageUrl,
 
             PubDate = item.PublishDate.ToUniversalTime()
                 .ToString("ddd, dd MMM yyyy HH:mm:ss 'GMT'", CultureInfo.InvariantCulture),
@@ -244,24 +246,31 @@ public class TorznabService
             attributes.Add(new TorznabAttribute { Name = "resolution", Value = resolutionValue });
         }
 
-        // Language
-        if (item.Language != MediaLanguage.Unknown)
+        // Languages
+        if (item.Languages != null && item.Languages.Any())
         {
-            var languageValue = item.Language switch
-            {
-                MediaLanguage.PtBr => "pt-br",
-                MediaLanguage.Dual => "dual",
-                MediaLanguage.Legendado => "legendado",
-                _ => "unknown"
-            };
-            attributes.Add(new TorznabAttribute { Name = "language", Value = languageValue });
+            var languageValues = item.Languages
+                .Select(lang => lang switch
+                {
+                    MediaLanguage.Portuguese => "porguese",
+                    MediaLanguage.English => "english",
+                    MediaLanguage.Japanese => "japanese",
+                    _ => null
+                })
+                .Where(v => v != null)
+                .Distinct()
+                .ToList();
+
+            foreach (var language in languageValues) {
+                attributes.Add(new TorznabAttribute { Name = "language", Value = language });
+            }
         }
 
-        //// IMDB ID if available
-        //if (!string.IsNullOrEmpty(item.ImdbId))
-        //{
-        //    attributes.Add(new TorznabAttribute { Name = "imdbid", Value = item.ImdbId });
-        //}
+        // IMDB ID if available
+        if (!string.IsNullOrEmpty(item.ImdbId))
+        {
+            attributes.Add(new TorznabAttribute { Name = "imdbid", Value = item.ImdbId });
+        }
 
         attributes.Add(new TorznabAttribute { Name = "seeders", Value = item.Seeders?.ToString() ?? "1" });
         

@@ -5,6 +5,7 @@ using Scraper.Core.Interfaces;
 using Scraper.Core.Models;
 using Scraper.Infrastructure.Interfaces;
 using Scraper.Infrastructure.Services;
+using System.Globalization;
 
 namespace Scraper.Infrastructure.Scrapers;
 
@@ -116,19 +117,21 @@ public abstract class BaseScraper : IScraper
         MediaType type = MediaType.Unknown)
     {
         var normalizedTitle = TitleNormalizer.NormalizeTitle(title, type);
-        var language = TitleNormalizer.DetectLanguage(title);
+        var languages = TitleNormalizer.DetectLanguages(title);
         var resolution = TitleNormalizer.DetectResolution(title);
+
+        var tmdbmovieDetails = TmdbService.GetTmdbMovieDetailsAsync(normalizedTitle, publishDate?.Year).GetAwaiter().GetResult();
 
         var item = new MediaItem
         {
             Title = title,
             PageUrl = pageUrl,
             NormalizedTitle = normalizedTitle,
-            Language = language,
+            Languages = languages,
             Resolution = resolution,
             Type = type,
-            ImdbId = TmdbService.GetImdbIdByTitleAsync(normalizedTitle, publishDate?.Year).GetAwaiter().GetResult(),
-            PublishDate = publishDate ?? DateTime.UtcNow,
+            ImdbId = tmdbmovieDetails?.ImdbId,
+            PublishDate = tmdbmovieDetails?.ReleaseDate ?? publishDate ?? DateTime.UtcNow,
             Guid = Guid.NewGuid().ToString()
         };
 
@@ -174,7 +177,10 @@ public abstract class BaseScraper : IScraper
             normalized = normalized.Replace("KB", "").Trim();
         }
 
-        if (double.TryParse(normalized, out var value))
+        if (double.TryParse(normalized,
+                            NumberStyles.Any,
+                            CultureInfo.InvariantCulture, 
+                            out var value))
         {
             return (long)(value * multiplier);
         }

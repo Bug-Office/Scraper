@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Scraper.Core.Interfaces;
+using Scraper.Core.Models;
 
 namespace Scraper.Infrastructure.Services;
 
@@ -50,7 +51,7 @@ public class TmdbService : ITmdbService
         }
     }
 
-    public async Task<string?> GetImdbIdByTitleAsync(string title, int? year = null, CancellationToken cancellationToken = default)
+    public async Task<TmdbMovieDetails?> GetTmdbMovieDetailsAsync(string title, int? year = null, CancellationToken cancellationToken = default)
     {
         var apiKey = await GetApiKeyAsync();
         
@@ -106,7 +107,7 @@ public class TmdbService : ITmdbService
             }
 
             _logger.LogDebug("Found IMDB ID {ImdbId} for movie: {Title}", detailsResponse.ImdbId, title);
-            return detailsResponse.ImdbId;
+            return detailsResponse;
         }
         catch (HttpRequestException ex)
         {
@@ -123,37 +124,6 @@ public class TmdbService : ITmdbService
             _logger.LogError(ex, "Error searching TMDB for: {Title}", title);
             return null;
         }
-    }
-
-    // TMDB API Response Models
-    private class TmdbSearchResponse
-    {
-        [JsonPropertyName("results")]
-        public List<TmdbMovieResult> Results { get; set; } = new();
-    }
-
-    private class TmdbMovieResult
-    {
-        [JsonPropertyName("id")]
-        public int Id { get; set; }
-
-        [JsonPropertyName("title")]
-        public string Title { get; set; } = string.Empty;
-
-        [JsonPropertyName("release_date")]
-        public string? ReleaseDate { get; set; }
-    }
-
-    private class TmdbMovieDetails
-    {
-        [JsonPropertyName("id")]
-        public int Id { get; set; }
-
-        [JsonPropertyName("imdb_id")]
-        public string? ImdbId { get; set; }
-
-        [JsonPropertyName("title")]
-        public string Title { get; set; } = string.Empty;
     }
 }
 

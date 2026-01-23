@@ -5,6 +5,7 @@ using Scraper.Core.Interfaces;
 using Scraper.Core.Models;
 using Scraper.Infrastructure.Http;
 using Scraper.Infrastructure.Interfaces;
+using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace Scraper.Infrastructure.Scrapers;
@@ -295,6 +296,20 @@ public class ApacheTorrentScraper : BaseScraper
                 mediaType
             );
 
+            // Se temos a página de detalhes, extrair informações adicionais
+            if (!string.IsNullOrEmpty(detailLink))
+            {
+                try
+                {
+                    await EnrichMediaItemFromDetailPageAsync(item, detailLink, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "Failed to enrich item from detail page {Url}", detailLink);
+                    // Continuar mesmo se falhar
+                }
+            }
+
             // Salvar no banco de dados
             try
             {
@@ -510,6 +525,17 @@ public class ApacheTorrentScraper : BaseScraper
                         MediaType.TvShow
                     );
 
+                    // Enriquecer episódio com informações da página de detalhes
+                    try
+                    {
+                        await EnrichMediaItemFromDetailPageAsync(episode, detailUrl, cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.LogWarning(ex, "Failed to enrich episode from detail page");
+                        // Continuar mesmo se falhar
+                    }
+
                     episodes.Add(episode);
                 }
                 catch (Exception ex)
@@ -525,6 +551,209 @@ public class ApacheTorrentScraper : BaseScraper
             Logger.LogWarning(ex, "Error extracting episodes from detail page {Url}", detailUrl);
             return Enumerable.Empty<MediaItem>();
         }
+    }
+
+    /// <summary>
+    /// Enriches a MediaItem with additional information from the detail page
+    /// </summary>
+    private async Task EnrichMediaItemFromDetailPageAsync(MediaItem item, string detailUrl, CancellationToken cancellationToken)
+    {
+        try
+        {
+            Logger.LogDebug("Enriching item from detail page: {Url}", detailUrl);
+            string html;
+            try
+            {
+                html = await FetchHtmlAsync(detailUrl, cancellationToken);
+            }
+            catch (TimeoutException ex)
+            {
+                Logger.LogWarning(ex, "Timeout while enriching from detail page {Url}", detailUrl);
+                return;
+            }
+            catch (TaskCanceledException ex)
+            {
+                Logger.LogWarning(ex, "Request canceled while enriching from detail page {Url}", detailUrl);
+                return;
+            }
+            
+            var doc = ParseHtml(html);
+
+            // Extrair informações da seção de informações
+            var infoSection = doc.DocumentNode.SelectSingleNode("//div[contains(@class, 'infos')]/p")
+                ?? doc.DocumentNode.SelectSingleNode("//div[contains(@class, 'conteudo')]")
+                ?? doc.DocumentNode;
+
+            var infoText = infoSection.InnerText;
+
+            // Extrair tamanho
+            infoText = doc.DocumentNode.SelectSingleNode("//div[contains(@class, 'infos')]/p/text()[15]").InnerText.Replace(": ", "Tamanho: ");
+            var sizeText = ExtractSizeFromDetailPage(infoText);
+            if (!string.IsNullOrEmpty(sizeText))
+            {
+                var size = ParseFileSize(sizeText);
+                if (size > 0)
+                {
+                    item.FileSize = size;
+                }
+            }
+
+            // Extrair formato (MKV, AVI, MP4, etc.)
+            infoText = doc.DocumentNode.SelectSingleNode("//div[contains(@class, 'infos')]/p/text()[14]").InnerText.Replace(": ", "Formato: ");
+            var format = ExtractFormatFromDetailPage(infoText);
+            if (!string.IsNullOrEmpty(format))
+            {
+                item.Format = format;
+            }
+
+            // Extrair qualidade/resolução
+            infoText = doc.DocumentNode.SelectSingleNode("//div[contains(@class, 'infos')]/p/text()[13]").InnerText.Replace(": ", "Qualidade: ");
+            var quality = ExtractQualityFromDetailPage(infoText);
+            if (!string.IsNullOrEmpty(quality))
+            {
+                item.Resolution = quality;
+            }
+
+            // Extrair idiomas
+            infoText = doc.DocumentNode.SelectSingleNode("//div[contains(@class, 'infos')]/p/text()[9]").InnerText.Replace(": ", "Idioma: ");
+            var languages = ExtractLanguagesFromDetailPage(infoText);
+            if (languages.Any())
+            {
+                item.Languages = languages;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error enriching item from detail page {Url}", detailUrl);
+        }
+    }
+
+    /// <summary>
+    /// Extracts file size from detail page text
+    /// </summary>
+    private string? ExtractSizeFromDetailPage(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        // Look for "Tamanho: X.XX GB" or "Tamanho: X.XX MB"
+        var sizeMatch = Regex.Match(text, @"Tamanho[:\s]+(\d+[\.,]?\d*)\s*(GB|MB|KB)", RegexOptions.IgnoreCase);
+        if (sizeMatch.Success)
+        {
+            return $"{sizeMatch.Groups[1].Value.Replace(',', '.')} {sizeMatch.Groups[2].Value.ToUpper()}";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Extracts file format from detail page text
+    /// </summary>
+    private string? ExtractFormatFromDetailPage(string text)
+    {
+        var formats = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        // Ex: "Formato: MP4 / RMVB"
+        var match = Regex.Match(
+            text,
+            @"Formato\s*:\s*([A-Z0-9]+(?:\s*(?:/|,)\s*[A-Z0-9]+)*)",
+            RegexOptions.IgnoreCase
+        );
+
+        if (match.Success)
+        {
+            var raw = match.Groups[1].Value;
+
+            formats.AddRange(
+                raw
+                    .Split(new[] { '/', ',', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(f => f.Trim().ToUpperInvariant())
+            );
+        }
+
+        return string.Join(" / ", formats.Distinct().ToList());
+    }
+
+    /// <summary>
+    /// Extracts quality/resolution from detail page text
+    /// </summary>
+    private string? ExtractQualityFromDetailPage(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        // Look for "Qualidade: 1080p / BluRay / Full HD"
+        var qualityMatch = Regex.Match(text, @"Qualidade[:\s]+([^\n\r]+)", RegexOptions.IgnoreCase);
+        if (qualityMatch.Success)
+        {
+            var quality = qualityMatch.Groups[1].Value.Trim();
+            // Normalize common quality strings
+            quality = Regex.Replace(quality, @"\s*/\s*", " / ", RegexOptions.IgnoreCase);
+            return quality;
+        }
+
+        // Fallback: look for resolution patterns
+        var resolutionMatch = Regex.Match(text, @"(\d{3,4}p|4K|Full\s*HD|BluRay|HD|SD)", RegexOptions.IgnoreCase);
+        if (resolutionMatch.Success)
+        {
+            return resolutionMatch.Groups[1].Value;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Extracts languages from detail page text
+    /// </summary>
+    private List<MediaLanguage> ExtractLanguagesFromDetailPage(string text)
+    {
+        var languages = new List<MediaLanguage>();
+        
+        if (string.IsNullOrWhiteSpace(text))
+            return languages;
+
+        var lowerText = text.ToLowerInvariant();
+
+        // Check for Dual Audio / Dublado / Dual Áudio
+        if (lowerText.Contains("dual") && (lowerText.Contains("áudio") || lowerText.Contains("audio")))
+        {
+            languages.Add(MediaLanguage.Portuguese);
+            languages.Add(MediaLanguage.English);
+            return languages;
+        }
+
+        // Check for Dublado
+        if (lowerText.Contains("dublado"))
+        {
+            if (!languages.Contains(MediaLanguage.Portuguese))
+                languages.Add(MediaLanguage.Portuguese);
+        }
+
+        // Check for Legendado
+        if (lowerText.Contains("japones"))
+        {
+            if (!languages.Contains(MediaLanguage.Japanese))
+                languages.Add(MediaLanguage.Japanese);
+        }
+
+        // Check for Legendado
+        if (lowerText.Contains("inglês") || lowerText.Contains("legendado"))
+        {
+            if (!languages.Contains(MediaLanguage.English))
+                languages.Add(MediaLanguage.English);
+        }
+
+        // Check for PT-BR / Português
+        if (lowerText.Contains("português") || lowerText.Contains("pt-br") || lowerText.Contains("ptbr"))
+        {
+            if (!languages.Contains(MediaLanguage.Portuguese))
+                languages.Add(MediaLanguage.Portuguese);
+        }
+
+        return languages;
     }
 
     /// <summary>

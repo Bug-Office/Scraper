@@ -47,6 +47,9 @@ public class TorznabItem
     [XmlElement("pubDate")]
     public string PubDate { get; set; } = string.Empty;
 
+    [XmlElement("comments")]
+    public string Comments { get; set; } = string.Empty;
+
     [XmlElement("description")]
     public string Description { get; set; } = string.Empty;
 
@@ -65,8 +68,8 @@ public class TorznabItem
 
 public class TorznabGuid
 {
-    [XmlAttribute("isPermaLink")]
-    public bool IsPermaLink { get; set; } = false;
+    //[XmlAttribute("isPermaLink")]
+    //public bool IsPermaLink { get; set; } = false;
 
     [XmlText]
     public string Value { get; set; } = string.Empty;

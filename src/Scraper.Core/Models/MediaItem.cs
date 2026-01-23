@@ -10,7 +10,8 @@ public class MediaItem
     public long FileSize { get; set; }
     public DateTime PublishDate { get; set; }
     public string Resolution { get; set; } = string.Empty;
-    public MediaLanguage Language { get; set; }
+    public string Format { get; set; } = string.Empty;
+    public List<MediaLanguage> Languages { get; set; } = new();
     public MediaType Type { get; set; }
     public string? ImdbId { get; set; }
     public string Guid { get; set; } = System.Guid.NewGuid().ToString();
@@ -22,9 +23,9 @@ public class MediaItem
 public enum MediaLanguage
 {
     Unknown,
-    PtBr,
-    Dual,
-    Legendado
+    Portuguese,
+    English,
+    Japanese,
 }
 
 public enum MediaType

@@ -33,25 +33,42 @@ public class TitleNormalizer : ITitleNormalizer
 
     public MediaLanguage DetectLanguage(string title)
     {
+        var languages = DetectLanguages(title);
+        return languages.FirstOrDefault();
+    }
+
+    public List<MediaLanguage> DetectLanguages(string title)
+    {
+        var languages = new List<MediaLanguage>();
+        
         if (string.IsNullOrWhiteSpace(title))
-            return MediaLanguage.Unknown;
+            return languages;
 
         var lowerTitle = title.ToLowerInvariant();
 
         // Check for DUAL (both PT-BR and original audio)
         if (lowerTitle.Contains("dual") || lowerTitle.Contains("duplo"))
-            return MediaLanguage.Dual;
+        {
+            languages.Add(MediaLanguage.Portuguese);
+            languages.Add(MediaLanguage.English);
+            return languages;
+        }
 
         // Check for LEGENDADO (subtitled)
         if (lowerTitle.Contains("legendado") || lowerTitle.Contains("leg") || lowerTitle.Contains("sub"))
-            return MediaLanguage.Legendado;
+        {
+            languages.Add(MediaLanguage.English);
+        }
 
         // Check for PT-BR (dubbed)
         if (lowerTitle.Contains("pt-br") || lowerTitle.Contains("ptbr") || 
             lowerTitle.Contains("dublado") || lowerTitle.Contains("dub"))
-            return MediaLanguage.PtBr;
+        {
+            if (!languages.Contains(MediaLanguage.Portuguese))
+                languages.Add(MediaLanguage.Portuguese);
+        }
 
-        return MediaLanguage.Unknown;
+        return languages;
     }
 
     public string DetectResolution(string title)
@@ -85,32 +102,23 @@ public class TitleNormalizer : ITitleNormalizer
             parts.Add(item.NormalizedTitle);
 
         // Add year if available (extract from title or use current year as fallback)
-        var yearMatch = YearRegex.Match(item.Title);
-        if (yearMatch.Success)
-            parts.Add($"({yearMatch.Value})");
+        parts.Add($"({item.PublishDate.Year})");
 
         // Add resolution
         if (!string.IsNullOrWhiteSpace(item.Resolution))
-            parts.Add($"[{item.Resolution}]");
+            parts.Add($"{item.Resolution}");
 
         // Add language tag
-        var languageTag = item.Language switch
-        {
-            MediaLanguage.PtBr => "[PT-BR]",
-            MediaLanguage.Dual => "[DUAL]",
-            MediaLanguage.Legendado => "[LEG]",
-            _ => string.Empty
-        };
-
+        var languageTag = GenerateLanguageTag(item.Languages);
         if (!string.IsNullOrWhiteSpace(languageTag))
             parts.Add(languageTag);
 
-        // Add format (BluRay, WEB-DL, etc.) if detected
-        var format = DetectFormat(item.Title);
-        if (!string.IsNullOrWhiteSpace(format))
-            parts.Add($"[{format}]");
+        //// Add format (BluRay, WEB-DL, etc.) if detected
+        //var format = DetectFormat(item.Title);
+        //if (!string.IsNullOrWhiteSpace(format))
+        //    parts.Add($"{format}");
 
-        return string.Join(" ", parts).Trim();
+        return string.Join(" ", parts).Trim().Replace("/", "");
     }
 
     private static string DetectFormat(string title)
@@ -131,12 +139,12 @@ public class TitleNormalizer : ITitleNormalizer
         if (lowerTitle.Contains("hdtv"))
             return "HDTV";
 
-        return string.Empty;
+        return "WEB-DL";
     }
 
     private static readonly string[] GarbageTerms =
     {
-        "dual áudio", "torrent", "dublado", "dual", "legendado",
+        "dual Ã¡udio", "torrent", "dublado", "dual", "legendado",
         "download", "web-dl", "bluray", "brrip", "hdrip",
         "x264", "x265", "h264", "h265"
     };
@@ -157,52 +165,75 @@ public class TitleNormalizer : ITitleNormalizer
         // remove separadores ruins
         title = title.Replace("/", " ").Replace("|", " ");
 
-        // normaliza espaços
+        // normaliza espaï¿½os
         title = Regex.Replace(title, @"\s{2,}", " ").Trim();
 
         // capitaliza
         return CultureInfo.GetCultureInfo("pt-BR").TextInfo.ToTitleCase(title);
     }
 
-    public string GenerateSceneReleaseName(MediaItem item)
+    //public string GenerateSceneReleaseName(MediaItem item)
+    //{
+    //    // 1 base: tï¿½tulo original (EN) se existir
+    //    var baseTitle = !string.IsNullOrWhiteSpace(item.Title)
+    //        ? item.Title
+    //        : item.NormalizedTitle;
+
+    //    baseTitle = baseTitle
+    //        .Replace(":", "")
+    //        .Replace("-", "")
+    //        .Replace("'", "")
+    //        .Trim();
+
+    //    baseTitle = Regex.Replace(baseTitle, @"\s+", ".");
+
+    //    var parts = new List<string>
+    //{
+    //    baseTitle
+    //};
+
+    //    // 2 ano
+    //    parts.Add(item.PublishDate.Year.ToString());
+
+    //    // 3 resoluï¿½ï¿½o
+    //    if (!string.IsNullOrWhiteSpace(item.Resolution))
+    //        parts.Add(item.Resolution);
+
+    //    // 4 source
+    //    parts.Add("WEB-DL");
+
+    //    // 5 idioma
+    //    if (item.Languages.Contains(MediaLanguage.Portuguese) && item.Languages.Contains(MediaLanguage.Legendado))
+    //        parts.Add("DUAL");
+    //    else if (item.Languages.Contains(MediaLanguage.PtBr))
+    //        parts.Add("PTBR");
+    //    else if (item.Languages.Contains(MediaLanguage.Legendado))
+    //        parts.Add("LEG");
+
+    //    return string.Join(".", parts);
+    //}
+
+    private static string GenerateLanguageTag(List<MediaLanguage> languages)
     {
-        // 1 base: título original (EN) se existir
-        var baseTitle = !string.IsNullOrWhiteSpace(item.Title)
-            ? item.Title
-            : item.NormalizedTitle;
+        var language = "";
+        if (languages == null || languages.Count == 0)
+            language += "port eng"; // Default
 
-        baseTitle = baseTitle
-            .Replace(":", "")
-            .Replace("-", "")
-            .Replace("'", "")
-            .Trim();
+        var hasPortuguese = languages?.Contains(MediaLanguage.Portuguese) ?? false;
+        var hasEnglish = languages?.Contains(MediaLanguage.English) ?? false;
+        var hasJapanese = languages?.Contains(MediaLanguage.Japanese) ?? false;
+        var hasUnknown = languages?.Contains(MediaLanguage.Unknown) ?? false;
 
-        baseTitle = Regex.Replace(baseTitle, @"\s+", ".");
+        if (hasPortuguese)
+            language += " por";
+        if (hasEnglish)
+            language += " eng";
+        if (hasJapanese)
+            language += " jap";
+        if (hasUnknown)
+            language += " eng";
 
-        var parts = new List<string>
-    {
-        baseTitle
-    };
-
-        // 2 ano
-        parts.Add(item.PublishDate.Year.ToString());
-
-        // 3 resolução
-        if (!string.IsNullOrWhiteSpace(item.Resolution))
-            parts.Add(item.Resolution);
-
-        // 4 source
-        parts.Add("WEB-DL");
-
-        // 5 idioma
-        if (item.Language == MediaLanguage.Dual)
-            parts.Add("DUAL");
-        else if (item.Language == MediaLanguage.PtBr)
-            parts.Add("PTBR");
-        else if (item.Language == MediaLanguage.Legendado)
-            parts.Add("LEG");
-
-        return string.Join(".", parts);
+        return language;
     }
 }
 
