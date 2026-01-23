@@ -56,7 +56,7 @@ public class TorznabItem
     [XmlElement("enclosure")]
     public TorznabEnclosure? Enclosure { get; set; }
 
-    [XmlElement("torznab:attr", Namespace = "http://torznab.com/schemas/2015/feed")]
+    [XmlElement("attr", Namespace = "http://torznab.com/schemas/2015/feed")]
     public List<TorznabAttribute> Attributes { get; set; } = new();
 
     [XmlElement("size")]

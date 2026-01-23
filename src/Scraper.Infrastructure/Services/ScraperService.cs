@@ -1,6 +1,8 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Scraper.Core.Interfaces;
 using Scraper.Core.Models;
+using Scraper.Infrastructure.Interfaces;
 
 namespace Scraper.Infrastructure.Services;
 
@@ -8,16 +10,16 @@ public class ScraperService : IScraperService
 {
     private readonly IEnumerable<IScraper> _scrapers;
     private readonly ILogger<ScraperService> _logger;
-    private readonly IConfigurationService? _configService;
+    private readonly IConfigurationService _configurationService;
 
     public ScraperService(
         IEnumerable<IScraper> scrapers, 
         ILogger<ScraperService> logger,
-        IConfigurationService? configService = null)
+        IConfigurationService configurationService)
     {
         _scrapers = scrapers;
         _logger = logger;
-        _configService = configService;
+        _configurationService = configurationService;
     }
 
     public async Task<IEnumerable<MediaItem>> SearchAsync(SearchRequest request, CancellationToken cancellationToken = default)
@@ -29,16 +31,12 @@ public class ScraperService : IScraperService
         foreach (var scraper in _scrapers)
         {
             if (!scraper.IsEnabled)
+                continue;            
+
+            var config = await _configurationService.GetScraperConfigAsync(scraper.Name);
+            if (config != null && !config.IsEnabled)
                 continue;
-            
-            // Check configuration if available
-            if (_configService != null)
-            {
-                var config = await _configService.GetScraperConfigAsync(scraper.Name);
-                if (config != null && !config.IsEnabled)
-                    continue;
-            }
-            
+
             scrapersToUse.Add(scraper);
         }
         

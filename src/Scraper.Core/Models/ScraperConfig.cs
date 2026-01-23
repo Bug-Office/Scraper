@@ -20,5 +20,6 @@ public class AppConfiguration
     public string? BaseUrlOverride { get; set; }
     public bool AllowCors { get; set; } = false;
     public bool EnhancedLogging { get; set; } = false;
+    public string? TmdbApiKey { get; set; }
 }
 

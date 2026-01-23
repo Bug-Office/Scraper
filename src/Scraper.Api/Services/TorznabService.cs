@@ -1,8 +1,10 @@
-using System.Globalization;
-using System.Xml.Serialization;
 using Scraper.Api.Models;
 using Scraper.Core.Interfaces;
 using Scraper.Core.Models;
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Xml.Serialization;
 
 namespace Scraper.Api.Services;
 
@@ -17,7 +19,15 @@ public class TorznabService
         _titleNormalizer = titleNormalizer;
     }
 
-    public async Task<TorznabRss> SearchAsync(string query, string? imdbId = null, MediaType? type = null, CancellationToken cancellationToken = default)
+    public async Task<TorznabRss> SearchAsync(
+        string query, 
+        string? imdbId = null, 
+        MediaType? type = null, 
+        string? baseUrl = null,
+        string? offset = null,
+        string? limit = null,
+        string? apiKey = null,
+        CancellationToken cancellationToken = default)
     {
         var request = new SearchRequest
         {
@@ -25,6 +35,12 @@ public class TorznabService
             ImdbId = imdbId,
             Type = type
         };
+
+        if (!string.IsNullOrEmpty(offset))
+            request.Offset = int.Parse(offset);
+
+        if (!string.IsNullOrEmpty(limit))
+            request.Limit = int.Parse(limit);
 
         var items = await _scraperService.SearchAsync(request, cancellationToken);
 
@@ -36,44 +52,117 @@ public class TorznabService
                 Description = "Torznab-compatible media scraper",
                 Link = string.Empty,
                 Language = "en-us",
-                Items = items.Select(item => ConvertToTorznabItem(item)).ToList()
+                Items = items.Select(item => ConvertToTorznabItem(item, baseUrl, apiKey)).ToList()
             }
         };
 
         return rss;
     }
 
-    private TorznabItem ConvertToTorznabItem(MediaItem item)
+    //private TorznabItem ConvertToTorznabItem(MediaItem item, string? baseUrl = null, string? apiKey = null)
+    //{
+    //    var magnet = item.MagnetLink;
+    //    var fileSize = item.FileSize > 0
+    //        ? item.FileSize
+    //        : 15_000_000_000; // fallback seguro (~15GB)
+
+    //    var torznabItem = new TorznabItem
+    //    {
+    //        Title = _titleNormalizer.GenerateSceneReleaseName(item),
+
+    //        Guid = new TorznabGuid
+    //        {
+    //            Value = item.Title
+    //        },
+
+    //        Link = magnet,
+
+    //        PubDate = item.PublishDate.ToUniversalTime()
+    //            .ToString("ddd, dd MMM yyyy HH:mm:ss 'GMT'", CultureInfo.InvariantCulture),
+
+    //        Description = item.Description ?? item.Title,
+
+    //        Size = fileSize,
+
+    //        Categories = GetCategories(item.Type, item.Resolution),
+
+    //        Attributes = GetAttributes(item),
+
+    //        Enclosure = new TorznabEnclosure
+    //        {
+    //            Url = magnet,
+    //            Length = fileSize,
+    //            Type = "application/x-bittorrent"
+    //        }
+    //    };
+
+    //    return torznabItem;
+    //}
+
+    private TorznabItem ConvertToTorznabItem(MediaItem item, string? baseUrl = null, string? apiKey = null)
     {
+        var magnet = item.MagnetLink;
+
+        var fileSize = item.FileSize > 0
+            ? item.FileSize
+            : 15_000_000_000; // fallback seguro
+
         var torznabItem = new TorznabItem
         {
+            // precisa ser release name estilo scene
             Title = _titleNormalizer.GenerateSafeReleaseName(item),
+
             Guid = new TorznabGuid
             {
                 IsPermaLink = false,
-                Value = item.Guid
+                Value = ExtractBtih(magnet)
             },
-            Link = !string.IsNullOrEmpty(item.MagnetLink) ? item.MagnetLink : item.TorrentLink,
-            PubDate = item.PublishDate.ToString("ddd, dd MMM yyyy HH:mm:ss UTC", CultureInfo.InvariantCulture),
-            Description = item.Description ?? item.Title,
-            Size = item.FileSize,
-            Categories = GetCategories(item.Type, item.Resolution),
-            Attributes = GetAttributes(item)
-        };
 
-        // Set enclosure if torrent link is available
-        if (!string.IsNullOrEmpty(item.TorrentLink))
-        {
-            torznabItem.Enclosure = new TorznabEnclosure
+            Link = magnet,
+
+            PubDate = item.PublishDate.ToUniversalTime()
+                .ToString("ddd, dd MMM yyyy HH:mm:ss 'GMT'", CultureInfo.InvariantCulture),
+
+            Description = item.Description ?? item.Title,
+
+            Size = fileSize,
+
+            Categories = new() { "2000" },
+
+            Enclosure = new TorznabEnclosure
             {
-                Url = item.TorrentLink,
-                Length = item.FileSize,
+                Url = magnet,
+                Length = fileSize,
                 Type = "application/x-bittorrent"
-            };
-        }
+            },
+
+            Attributes = new List<TorznabAttribute>
+            {
+                //new() { Name = "imdbid", Value = item.ImdbId! },
+                new() { Name = "category", Value = "2000" },
+                new() { Name = "tag", Value = "apachetorrent" },
+                new() { Name = "genre", Value = "" },
+                new() { Name = "seeders", Value = "1" },
+                new() { Name = "grabs", Value = "1" },
+                new() { Name = "peers", Value = "1" },
+                new() { Name = "downloadvolumefactor", Value = "0" },
+                new() { Name = "uploadvolumefactor", Value = "1" },
+            }
+        };
 
         return torznabItem;
     }
+
+    private static string ExtractBtih(string magnet)
+    {
+        var match = Regex.Match(magnet, @"btih:([a-fA-F0-9]+)");
+        return match.Success
+            ? $"btih-{match.Groups[1].Value.ToLowerInvariant()}"
+            : Guid.NewGuid().ToString(); // fallback raro
+    }
+
+
+
 
     private List<string> GetCategories(MediaType type, string? resolution = null)
     {
@@ -168,22 +257,16 @@ public class TorznabService
             attributes.Add(new TorznabAttribute { Name = "language", Value = languageValue });
         }
 
-        // IMDB ID if available
-        if (!string.IsNullOrEmpty(item.ImdbId))
-        {
-            attributes.Add(new TorznabAttribute { Name = "imdbid", Value = item.ImdbId });
-        }
+        //// IMDB ID if available
+        //if (!string.IsNullOrEmpty(item.ImdbId))
+        //{
+        //    attributes.Add(new TorznabAttribute { Name = "imdbid", Value = item.ImdbId });
+        //}
 
-        // Seeders/Leechers if available
-        if (item.Seeders.HasValue)
-        {
-            attributes.Add(new TorznabAttribute { Name = "seeders", Value = item.Seeders.Value.ToString() });
-        }
-
-        if (item.Leechers.HasValue)
-        {
-            attributes.Add(new TorznabAttribute { Name = "peers", Value = item.Leechers.Value.ToString() });
-        }
+        attributes.Add(new TorznabAttribute { Name = "seeders", Value = item.Seeders?.ToString() ?? "1" });
+        
+        attributes.Add(new TorznabAttribute { Name = "peers", Value = item.Leechers?.ToString() ?? "1" });
+       
 
         return attributes;
     }

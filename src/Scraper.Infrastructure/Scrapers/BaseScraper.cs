@@ -1,7 +1,10 @@
 using HtmlAgilityPack;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Scraper.Core.Interfaces;
 using Scraper.Core.Models;
+using Scraper.Infrastructure.Interfaces;
+using Scraper.Infrastructure.Services;
 
 namespace Scraper.Infrastructure.Scrapers;
 
@@ -10,18 +13,24 @@ public abstract class BaseScraper : IScraper
     protected readonly ILogger Logger;
     protected readonly ITitleNormalizer TitleNormalizer;
     protected readonly HttpClient HttpClient;
+    protected readonly ITmdbService TmdbService;
     protected readonly IFlareSolverrService? FlareSolverrService;
+    protected readonly IMediaItemRepository? MediaItemRepository;
 
     protected BaseScraper(
         HttpClient httpClient,
         ITitleNormalizer titleNormalizer,
         ILogger logger,
-        IFlareSolverrService? flareSolverrService = null)
+        ITmdbService tmdbService,
+        IFlareSolverrService? flareSolverrService = null,
+        IMediaItemRepository? mediaItemRepository = null)
     {
         HttpClient = httpClient;
         TitleNormalizer = titleNormalizer;
         Logger = logger;
+        TmdbService = tmdbService;
         FlareSolverrService = flareSolverrService;
+        MediaItemRepository = mediaItemRepository;
     }
 
     public abstract string Name { get; }
@@ -100,6 +109,7 @@ public abstract class BaseScraper : IScraper
 
     protected virtual MediaItem CreateMediaItem(
         string title,
+        string pageUrl,
         string link,
         long? size = null,
         DateTime? publishDate = null,
@@ -112,10 +122,12 @@ public abstract class BaseScraper : IScraper
         var item = new MediaItem
         {
             Title = title,
+            PageUrl = pageUrl,
             NormalizedTitle = normalizedTitle,
             Language = language,
             Resolution = resolution,
             Type = type,
+            ImdbId = TmdbService.GetImdbIdByTitleAsync(normalizedTitle, publishDate?.Year).GetAwaiter().GetResult(),
             PublishDate = publishDate ?? DateTime.UtcNow,
             Guid = Guid.NewGuid().ToString()
         };

@@ -1,3 +1,5 @@
+using Scraper.Core.Models;
+
 namespace Scraper.Core.Interfaces;
 
 public interface ITitleNormalizer
@@ -6,5 +8,6 @@ public interface ITitleNormalizer
     Models.MediaLanguage DetectLanguage(string title);
     string DetectResolution(string title);
     string GenerateSafeReleaseName(Models.MediaItem item);
+    string GenerateSceneReleaseName(MediaItem item);
 }
 

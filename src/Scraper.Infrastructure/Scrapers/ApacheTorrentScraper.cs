@@ -1,8 +1,10 @@
 using HtmlAgilityPack;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Scraper.Core.Interfaces;
 using Scraper.Core.Models;
 using Scraper.Infrastructure.Http;
+using Scraper.Infrastructure.Interfaces;
 using System.Text.RegularExpressions;
 
 namespace Scraper.Infrastructure.Scrapers;
@@ -20,12 +22,16 @@ public class ApacheTorrentScraper : BaseScraper
     public ApacheTorrentScraper(
         ITitleNormalizer titleNormalizer,
         ILogger<ApacheTorrentScraper> logger,
-        IFlareSolverrService? flareSolverrService = null)
+        ITmdbService tmdbService,
+        IFlareSolverrService? flareSolverrService = null,
+        IMediaItemRepository? mediaItemRepository = null)
         : base(
             HttpClientFactory.CreateClient(BaseUrl),
             titleNormalizer,
             logger,
-            flareSolverrService)
+            tmdbService,
+            flareSolverrService,
+            mediaItemRepository)
     {
     }
 
@@ -34,10 +40,19 @@ public class ApacheTorrentScraper : BaseScraper
 
     public override async Task<IEnumerable<MediaItem>> SearchAsync(SearchRequest request, CancellationToken cancellationToken = default)
     {
-        Logger.LogInformation("Searching {Query} on {ScraperName}", request.Query, Name);
+        Logger.LogInformation("Searching Query:'{Query}' | ImdbId: {ImdbId} on '{ScraperName}'", request.Query, request.ImdbId, Name);
 
-        if (string.IsNullOrWhiteSpace(request.Query))
+        try
         {
+            if (!string.IsNullOrEmpty(request.ImdbId))
+            {
+                var results = await MediaItemRepository!.GetByImdbid(request.ImdbId);
+                return results;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error searching {ScraperName}", Name);
             return Enumerable.Empty<MediaItem>();
         }
 
@@ -91,8 +106,11 @@ public class ApacheTorrentScraper : BaseScraper
             });
 
             var parsedItems = await Task.WhenAll(parseTasks);
-            var allItems = parsedItems.SelectMany(items => items);
-            results.AddRange(allItems.Where(item => !request.Type.HasValue || item.Type == request.Type));
+            var allItems = parsedItems.SelectMany(items => items)
+                                    .Where(item => !request.Type.HasValue || item.Type == request.Type)
+                                    .Skip(request.Offset).Take(request.Limit);
+
+            results.AddRange(allItems);
 
             Logger.LogInformation("Found {Count} results from {ScraperName}", results.Count, Name);
             return results;
@@ -238,7 +256,15 @@ public class ApacheTorrentScraper : BaseScraper
             {
                 try
                 {
-                    var episodes = await ExtractEpisodesFromDetailPageAsync(detailLink, titleText, cancellationToken);
+                    IEnumerable<MediaItem> episodes = Enumerable.Empty<MediaItem>();
+                    episodes = await MediaItemRepository!.GetByPageUrlAsync(detailLink);
+
+                    if (!episodes.Any())
+                    {
+                        episodes = await ExtractEpisodesFromDetailPageAsync(detailLink, titleText, cancellationToken);
+                        await MediaItemRepository!.SaveRangeAsync(episodes);
+                    }
+
                     if (episodes.Any())
                     {
                         Logger.LogDebug("Found {Count} episodes for series {Title}", episodes.Count(), titleText);
@@ -251,14 +277,35 @@ public class ApacheTorrentScraper : BaseScraper
                 }
             }
 
+            // Verificar se já existe no banco de dados
+            var existingItems = await MediaItemRepository!.GetByPageUrlAsync(detailLink);
+            if (existingItems.Any())
+            {
+                Logger.LogDebug("Found existing items in database for URL: {Url}", detailLink);
+                return existingItems;
+            }
+
             // Single item (movie or single episode)
             var item = CreateMediaItem(
                 titleText,
+                detailLink,
                 link,
                 ParseFileSize(sizeText),
                 ParseDate(dateText),
                 mediaType
             );
+
+            // Salvar no banco de dados
+            try
+            {
+                await MediaItemRepository!.SaveAsync(item);
+                Logger.LogDebug("Saved item to database: {Title}", item.Title);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Failed to save item to database: {Title}", item.Title);
+                // Não falhar se houver erro ao salvar
+            }
 
             return new[] { item };
         }
@@ -456,6 +503,7 @@ public class ApacheTorrentScraper : BaseScraper
 
                     var episode = CreateMediaItem(
                         episodeTitle,
+                        detailUrl,
                         magnet,
                         ParseFileSize(sizeText),
                         ParseDate(dateText),

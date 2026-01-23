@@ -1,6 +1,7 @@
-using System.Text.RegularExpressions;
 using Scraper.Core.Interfaces;
 using Scraper.Core.Models;
+using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace Scraper.Core.Normalizers;
 
@@ -27,7 +28,7 @@ public class TitleNormalizer : ITitleNormalizer
         // Clean up multiple spaces
         normalized = Regex.Replace(normalized, @"\s+", " ");
 
-        return normalized.Trim();
+        return CleanTitleForTmdb(normalized).Trim();
     }
 
     public MediaLanguage DetectLanguage(string title)
@@ -131,6 +132,77 @@ public class TitleNormalizer : ITitleNormalizer
             return "HDTV";
 
         return string.Empty;
+    }
+
+    private static readonly string[] GarbageTerms =
+    {
+        "dual áudio", "torrent", "dublado", "dual", "legendado",
+        "download", "web-dl", "bluray", "brrip", "hdrip",
+        "x264", "x265", "h264", "h265"
+    };
+
+    public static string CleanTitleForTmdb(string rawTitle)
+    {
+        var title = rawTitle.ToLowerInvariant();
+
+        foreach (var term in GarbageTerms)
+            title = Regex.Replace(title, $@"\b{Regex.Escape(term)}\b", "", RegexOptions.IgnoreCase);
+
+        // remove [tags]
+        title = Regex.Replace(title, @"\[[^\]]*\]", "");
+
+        // remove (tags)
+        title = Regex.Replace(title, @"\([^\)]*\)", "");
+
+        // remove separadores ruins
+        title = title.Replace("/", " ").Replace("|", " ");
+
+        // normaliza espaços
+        title = Regex.Replace(title, @"\s{2,}", " ").Trim();
+
+        // capitaliza
+        return CultureInfo.GetCultureInfo("pt-BR").TextInfo.ToTitleCase(title);
+    }
+
+    public string GenerateSceneReleaseName(MediaItem item)
+    {
+        // 1 base: título original (EN) se existir
+        var baseTitle = !string.IsNullOrWhiteSpace(item.Title)
+            ? item.Title
+            : item.NormalizedTitle;
+
+        baseTitle = baseTitle
+            .Replace(":", "")
+            .Replace("-", "")
+            .Replace("'", "")
+            .Trim();
+
+        baseTitle = Regex.Replace(baseTitle, @"\s+", ".");
+
+        var parts = new List<string>
+    {
+        baseTitle
+    };
+
+        // 2 ano
+        parts.Add(item.PublishDate.Year.ToString());
+
+        // 3 resolução
+        if (!string.IsNullOrWhiteSpace(item.Resolution))
+            parts.Add(item.Resolution);
+
+        // 4 source
+        parts.Add("WEB-DL");
+
+        // 5 idioma
+        if (item.Language == MediaLanguage.Dual)
+            parts.Add("DUAL");
+        else if (item.Language == MediaLanguage.PtBr)
+            parts.Add("PTBR");
+        else if (item.Language == MediaLanguage.Legendado)
+            parts.Add("LEG");
+
+        return string.Join(".", parts);
     }
 }
 

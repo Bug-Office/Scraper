@@ -359,6 +359,10 @@
                         <input type="number" id="flareSolverrMaxTimeout" min="1000" value="240000">
                     </div>
                     <div class="config-item">
+                        <label>TheMovieDB API Key:</label>
+                        <input type="text" id="tmdbApiKey" placeholder="Bearer token from themoviedb.org">
+                    </div>
+                    <div class="config-item">
                         <label>
                             <input type="checkbox" id="allowCors" style="width: auto; margin-right: 8px;">
                             Allow CORS
@@ -423,7 +427,7 @@
                 container.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading...</p></div>';
                 
                 // Load configuration
-                const configResponse = await fetch('/api/config');
+                const configResponse = await fetch('/api/configuration');
                 if (!configResponse.ok) throw new Error('Failed to load configuration');
                 currentConfig = await configResponse.json();
 
@@ -458,6 +462,7 @@
             document.getElementById('cacheMaxResults').value = currentConfig.cacheMaxResultsPerIndexer || 1000;
             document.getElementById('flareSolverrUrl').value = currentConfig.flareSolverrUrl || '';
             document.getElementById('flareSolverrMaxTimeout').value = currentConfig.flareSolverrMaxTimeoutMs || 240000;
+            document.getElementById('tmdbApiKey').value = currentConfig.tmdbApiKey || '';
             document.getElementById('allowCors').checked = currentConfig.allowCors || false;
             document.getElementById('enhancedLogging').checked = currentConfig.enhancedLogging || false;
 
@@ -572,6 +577,8 @@
                 const flareUrlValue = document.getElementById('flareSolverrUrl').value.trim();
                 currentConfig.flareSolverrUrl = flareUrlValue || null;
                 currentConfig.flareSolverrMaxTimeoutMs = parseInt(document.getElementById('flareSolverrMaxTimeout').value) || 240000;
+                const tmdbApiKeyValue = document.getElementById('tmdbApiKey').value.trim();
+                currentConfig.tmdbApiKey = tmdbApiKeyValue || null;
                 currentConfig.allowCors = document.getElementById('allowCors').checked;
                 currentConfig.enhancedLogging = document.getElementById('enhancedLogging').checked;
                 
@@ -634,7 +641,7 @@
                 });
 
                 // Save configuration
-                const response = await fetch('/api/config', {
+                const response = await fetch('/api/configuration', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(currentConfig)

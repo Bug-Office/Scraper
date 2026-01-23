@@ -4,6 +4,7 @@ public class MediaItem
 {
     public string Title { get; set; } = string.Empty;
     public string NormalizedTitle { get; set; } = string.Empty;
+    public string PageUrl { get; set; } = string.Empty;
     public string MagnetLink { get; set; } = string.Empty;
     public string TorrentLink { get; set; } = string.Empty;
     public long FileSize { get; set; }

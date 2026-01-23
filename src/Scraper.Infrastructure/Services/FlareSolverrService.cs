@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 using Scraper.Core.Interfaces;
 
 namespace Scraper.Infrastructure.Services;
@@ -15,8 +16,9 @@ public class FlareSolverrService : IFlareSolverrService
     private readonly TimeSpan _configCacheTime = TimeSpan.FromSeconds(30);
 
     public FlareSolverrService(
-        IConfigurationService configurationService,
-        ILogger<FlareSolverrService> logger)
+        ILogger<FlareSolverrService> logger,
+        IConfigurationService configurationService
+    )
     {
         _logger = logger;
         _configurationService = configurationService;
@@ -25,8 +27,8 @@ public class FlareSolverrService : IFlareSolverrService
             Timeout = TimeSpan.FromMinutes(6) // FlareSolverr can take 2-5 minutes, give extra buffer
         };
 
-        // Load initial configuration
-        LoadConfiguration();
+        // Load initial configuration (defer to avoid issues during service registration)
+        // Configuration will be loaded on first use
     }
 
     private void LoadConfiguration()
@@ -89,10 +91,18 @@ public class FlareSolverrService : IFlareSolverrService
         }
 
         // Get max timeout from configuration
-        var config = await _configurationService.GetConfigurationAsync();
-        var maxTimeout = config.FlareSolverrMaxTimeoutMs > 0 
-            ? config.FlareSolverrMaxTimeoutMs 
-            : 240000; // Default 4 minutes
+        int maxTimeout = 240000; // Default 4 minutes
+        try
+        {
+            var config = await _configurationService.GetConfigurationAsync();
+            maxTimeout = config.FlareSolverrMaxTimeoutMs > 0 
+                ? config.FlareSolverrMaxTimeoutMs 
+                : 240000;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get FlareSolverr timeout from configuration, using default");
+        }
 
         try
         {

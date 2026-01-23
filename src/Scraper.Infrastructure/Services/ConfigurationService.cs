@@ -1,22 +1,24 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Scraper.Core.Interfaces;
 using Scraper.Core.Models;
+using Scraper.Infrastructure.Data;
+using Scraper.Infrastructure.Data.Entities;
 
 namespace Scraper.Infrastructure.Services;
 
 public class ConfigurationService : IConfigurationService
 {
-    private readonly string _configFilePath;
+    private const string ConfigKey = "AppConfiguration";
+    private readonly ScraperDbContext _context;
     private readonly ILogger<ConfigurationService> _logger;
     private AppConfiguration? _cachedConfig;
     private readonly object _lockObject = new();
 
-    public ConfigurationService(ILogger<ConfigurationService> logger)
+    public ConfigurationService(ScraperDbContext context, ILogger<ConfigurationService> logger)
     {
-        var configDir = Path.Combine(Directory.GetCurrentDirectory(), "config");
-        Directory.CreateDirectory(configDir);
-        _configFilePath = Path.Combine(configDir, "appsettings.json");
+        _context = context;
         _logger = logger;
     }
 
@@ -29,40 +31,63 @@ public class ConfigurationService : IConfigurationService
         {
             if (_cachedConfig != null)
                 return _cachedConfig;
+        }
 
-            if (File.Exists(_configFilePath))
+        try
+        {
+            var configEntity = await _context.Configurations
+                .FirstOrDefaultAsync(c => c.Key == ConfigKey);
+
+            if (configEntity != null)
             {
-                try
+                var options = new JsonSerializerOptions
                 {
-                    var json = File.ReadAllText(_configFilePath);
-                    _cachedConfig = JsonSerializer.Deserialize<AppConfiguration>(json) ?? new AppConfiguration();
-                    
-                    // Generate API key if not present
-                    if (string.IsNullOrWhiteSpace(_cachedConfig.ApiKey))
-                    {
-                        _cachedConfig.ApiKey = GenerateApiKey();
-                        _logger.LogInformation("Generated new API key");
-                        // Save immediately with new API key
-                        var options = new JsonSerializerOptions { WriteIndented = true };
-                        var updatedJson = JsonSerializer.Serialize(_cachedConfig, options);
-                        File.WriteAllText(_configFilePath, updatedJson);
-                    }
-                    
-                    _logger.LogInformation("Loaded configuration from {Path}", _configFilePath);
-                }
-                catch (Exception ex)
+                    PropertyNameCaseInsensitive = true,
+                    AllowTrailingCommas = true,
+                    ReadCommentHandling = JsonCommentHandling.Skip
+                };
+
+                _cachedConfig = JsonSerializer.Deserialize<AppConfiguration>(configEntity.Value, options);
+                
+                if (_cachedConfig == null)
                 {
-                    _logger.LogError(ex, "Error loading configuration, using defaults");
+                    _logger.LogWarning("Failed to deserialize configuration from database, using defaults");
                     _cachedConfig = new AppConfiguration();
-                    _cachedConfig.ApiKey = GenerateApiKey();
                 }
             }
             else
             {
                 _cachedConfig = new AppConfiguration();
-                _cachedConfig.ApiKey = GenerateApiKey();
-                _logger.LogInformation("Configuration file not found, using defaults with generated API key");
+                _logger.LogInformation("Configuration not found in database, using defaults");
             }
+
+            // Generate API key if not present
+            if (string.IsNullOrWhiteSpace(_cachedConfig.ApiKey))
+            {
+                _cachedConfig.ApiKey = GenerateApiKey();
+                _logger.LogInformation("Generated new API key");
+                // Save immediately with new API key
+                await SaveConfigurationAsync(_cachedConfig);
+            }
+
+            lock (_lockObject)
+            {
+                if (_cachedConfig != null)
+                    return _cachedConfig;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error loading configuration from database, using defaults");
+            _cachedConfig = new AppConfiguration();
+            _cachedConfig.ApiKey = GenerateApiKey();
+        }
+
+        // Garantir que sempre retornamos uma configuração válida
+        if (_cachedConfig == null)
+        {
+            _cachedConfig = new AppConfiguration();
+            _cachedConfig.ApiKey = GenerateApiKey();
         }
 
         return _cachedConfig;
@@ -78,18 +103,39 @@ public class ConfigurationService : IConfigurationService
             };
 
             var json = JsonSerializer.Serialize(config, options);
-            await File.WriteAllTextAsync(_configFilePath, json);
+
+            var configEntity = await _context.Configurations
+                .FirstOrDefaultAsync(c => c.Key == ConfigKey);
+
+            if (configEntity != null)
+            {
+                configEntity.Value = json;
+                configEntity.UpdatedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                configEntity = new ConfigurationEntity
+                {
+                    Key = ConfigKey,
+                    Value = json,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _context.Configurations.Add(configEntity);
+            }
+
+            await _context.SaveChangesAsync();
 
             lock (_lockObject)
             {
                 _cachedConfig = config;
             }
 
-            _logger.LogInformation("Configuration saved to {Path}", _configFilePath);
+            _logger.LogInformation("Configuration saved to database");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error saving configuration");
+            _logger.LogError(ex, "Error saving configuration to database");
             throw;
         }
     }

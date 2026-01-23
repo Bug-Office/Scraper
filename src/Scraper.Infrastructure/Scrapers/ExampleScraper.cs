@@ -16,11 +16,14 @@ public class ExampleScraper : BaseScraper
 
     public ExampleScraper(
         ITitleNormalizer titleNormalizer,
-        ILogger<ExampleScraper> logger)
+        ILogger<ExampleScraper> logger,
+        ITmdbService tmdbService
+    )
         : base(
             HttpClientFactory.CreateClient(BaseUrl),
             titleNormalizer,
-            logger)
+            logger,
+            tmdbService)
     {
     }
 
@@ -110,6 +113,7 @@ public class ExampleScraper : BaseScraper
 
             var item = CreateMediaItem(
                 title,
+                link,
                 link,
                 ParseFileSize(sizeText),
                 ParseDate(dateText),
