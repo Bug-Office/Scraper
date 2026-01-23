@@ -26,6 +26,7 @@ public class TorznabService
         string? baseUrl = null,
         string? offset = null,
         string? limit = null,
+        string? skipDatabase = null,
         string? apiKey = null,
         CancellationToken cancellationToken = default)
     {
@@ -41,6 +42,9 @@ public class TorznabService
 
         if (!string.IsNullOrEmpty(limit))
             request.Limit = int.Parse(limit);
+
+        if (!string.IsNullOrEmpty(skipDatabase))
+            request.SkipDatabase = bool.Parse(skipDatabase);
 
         var items = await _scraperService.SearchAsync(request, cancellationToken);
 
@@ -142,7 +146,7 @@ public class TorznabService
             {
                 //new() { Name = "imdbid", Value = item.ImdbId! },
                 new() { Name = "category", Value = "2000" },
-                new() { Name = "tag", Value = "apachetorrent" },
+                new() { Name = "tag", Value = item.Scraper },
                 new() { Name = "genre", Value = "" },
                 new() { Name = "seeders", Value = "1" },
                 new() { Name = "grabs", Value = "1" },

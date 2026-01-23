@@ -30,7 +30,7 @@ public class TorznabController : ControllerBase
     public async Task<IActionResult> Get([FromQuery] string? t, [FromQuery] string? q, 
         [FromQuery] string? imdbid, [FromQuery] string? season, [FromQuery] string? episode,
         [FromQuery] string? apikey, [FromQuery] string? cat, [FromQuery] string? extended,
-        [FromQuery] string? offset, [FromQuery] string? limit)
+        [FromQuery] string? offset, [FromQuery] string? limit, [FromQuery] string? skipDatabase)
     {
         var tLower = (t ?? string.Empty).ToLowerInvariant();
         var qValue = q ?? string.Empty;
@@ -42,6 +42,7 @@ public class TorznabController : ControllerBase
         var extendedValue = extended ?? string.Empty;
         var offsetValue = offset ?? string.Empty;
         var limitValue = limit ?? string.Empty;
+        var skipDatabaseValue = skipDatabase ?? string.Empty;
 
         // Validate API key if configured
         var config = await _configService.GetConfigurationAsync();
@@ -126,6 +127,7 @@ public class TorznabController : ControllerBase
                 baseUrl,
                 offsetValue,
                 limitValue,
+                skipDatabaseValue,
                 config.ApiKey);
 
             // Filter by categories if specified

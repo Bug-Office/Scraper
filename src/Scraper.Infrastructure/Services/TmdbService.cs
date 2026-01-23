@@ -78,7 +78,7 @@ public class TmdbService : ITmdbService
             {
                 searchUrl += $"&year={year.Value}";
             }
-            searchUrl += "&page=1&language=pt-BR";
+            searchUrl += "&page=1&language=pt-br";
 
             _logger.LogDebug("Searching TMDB for movie: {Title} (Year: {Year})", title, year);
 
@@ -97,7 +97,7 @@ public class TmdbService : ITmdbService
             _logger.LogDebug("Found TMDB movie ID {MovieId} for: {Title}", movieId, title);
 
             // Step 2: Get movie details to retrieve IMDB ID
-            var detailsUrl = $"{BaseUrl}/movie/{movieId}&language=pt-BR";
+            var detailsUrl = $"{BaseUrl}/movie/{movieId}?language=pt-br";
             var detailsResponse = await _httpClient.GetFromJsonAsync<TmdbMovieDetails>(detailsUrl, cancellationToken);
 
             if (detailsResponse?.ImdbId == null)

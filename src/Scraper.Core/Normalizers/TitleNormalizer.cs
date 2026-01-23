@@ -31,6 +31,53 @@ public class TitleNormalizer : ITitleNormalizer
         return CleanTitleForTmdb(normalized).Trim();
     }
 
+    public string NormalizeTitle(MediaItem item)
+    {
+        if (string.IsNullOrWhiteSpace(item.NormalizedTitle))
+            return string.Empty;
+
+        var title = item.NormalizedTitle;
+
+        // Remove year
+        if (item.PublishDate != default)
+        {
+            title = Regex.Replace(title, $@"\(?{item.PublishDate.Year}\)?", "", RegexOptions.IgnoreCase);
+        }
+
+        // Tokens to remove (format + resolution)
+        var tokensToRemove = new HashSet<string>(
+            (
+                (item.Format ?? "")
+                    .Split(" / ", StringSplitOptions.RemoveEmptyEntries)
+                    .Concat(
+                        (item.Resolution ?? "")
+                            .Split(" / ", StringSplitOptions.RemoveEmptyEntries)
+                    )
+            )
+            .Select(t => t.ToLowerInvariant().Trim())
+        );
+
+        // Split title into words
+        var words = title
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(word => !tokensToRemove.Contains(word.ToLowerInvariant()))
+            .ToList();
+
+        // Rebuild title
+        var normalizedTitle = string.Join(" ", words);
+
+        // Normalize spaces
+        normalizedTitle = Regex.Replace(normalizedTitle, @"\s{2,}", " ").Trim();
+
+        // Capitalize (pt-BR)
+        normalizedTitle = CultureInfo
+            .GetCultureInfo("pt-BR")
+            .TextInfo
+            .ToTitleCase(normalizedTitle.ToLowerInvariant());
+
+        return normalizedTitle;
+    }
+
     public MediaLanguage DetectLanguage(string title)
     {
         var languages = DetectLanguages(title);
@@ -165,7 +212,7 @@ public class TitleNormalizer : ITitleNormalizer
         // remove separadores ruins
         title = title.Replace("/", " ").Replace("|", " ");
 
-        // normaliza espa�os
+        // normaliza espaços
         title = Regex.Replace(title, @"\s{2,}", " ").Trim();
 
         // capitaliza
@@ -174,7 +221,7 @@ public class TitleNormalizer : ITitleNormalizer
 
     //public string GenerateSceneReleaseName(MediaItem item)
     //{
-    //    // 1 base: t�tulo original (EN) se existir
+    //    // 1 base: título original (EN) se existir
     //    var baseTitle = !string.IsNullOrWhiteSpace(item.Title)
     //        ? item.Title
     //        : item.NormalizedTitle;

@@ -7,19 +7,19 @@ using Scraper.Infrastructure.Configurations;
 using Scraper.Infrastructure.Http;
 using Scraper.Infrastructure.Interfaces;
 using Scraper.Infrastructure.Parsers;
-using Scraper.Infrastructure.Parsers.ApacheTorrent;
+using Scraper.Infrastructure.Parsers.RedeTorrent;
 using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace Scraper.Infrastructure.Scrapers;
 
 /// <summary>
-/// Scraper for Apache Torrent (https://apachetorrent.com)
+/// Scraper for Rede Torrent (https://RedeTorrent.com)
 /// Supports movies and series with PT-BR, DUAL, and LEGENDADO releases
 /// </summary>
-public class ApacheTorrentScraper : BaseScraper
+public class RedeTorrentScraper : BaseScraper
 {
-    private static readonly Regex YearRegex = new(@"\(Filme de (\d{4})\)|\(Série de (\d{4})\)", RegexOptions.Compiled);
+    private static readonly Regex YearRegex = new(@"\((\d{4})\)|\((\d{4})\)", RegexOptions.Compiled);
     private static readonly Regex SeriesRegex = new(@"(?i)(s\d{1,2}e\d{1,2}|season\s*\d+|temporada\s*\d+)", RegexOptions.Compiled);
 
     private readonly ScraperConfiguration _configuration;
@@ -28,37 +28,37 @@ public class ApacheTorrentScraper : BaseScraper
     private readonly IEpisodeExtractor _episodeExtractor;
     private readonly IDetailPageParser _detailPageParser;
 
-    public ApacheTorrentScraper(
+    public RedeTorrentScraper(
         ITitleNormalizer titleNormalizer,
-        ILogger<ApacheTorrentScraper> logger,
+        ILogger<RedeTorrentScraper> logger,
         ITmdbService tmdbService,
         ILoggerFactory loggerFactory,
         IFlareSolverrService? flareSolverrService = null,
         IMediaItemRepository? mediaItemRepository = null)
         : base(
-            HttpClientFactory.CreateClient(ApacheTorrentConfiguration.Create().BaseUrl),
+            HttpClientFactory.CreateClient(RedeTorrentConfiguration.Create().BaseUrl),
             titleNormalizer,
             logger,
             tmdbService,
             flareSolverrService,
             mediaItemRepository)
     {
-        _configuration = ApacheTorrentConfiguration.Create();
-        _metadataExtractor = new ApacheTorrentMetadataExtractor();
-        _linkExtractor = new ApacheTorrentLinkExtractor();
-        _episodeExtractor = new ApacheTorrentEpisodeExtractor(
-            loggerFactory.CreateLogger<ApacheTorrentEpisodeExtractor>(),
+        _configuration = RedeTorrentConfiguration.Create();
+        _metadataExtractor = new RedeTorrentMetadataExtractor();
+        _linkExtractor = new RedeTorrentLinkExtractor();
+        _episodeExtractor = new RedeTorrentEpisodeExtractor(
+            loggerFactory.CreateLogger<RedeTorrentEpisodeExtractor>(),
             titleNormalizer,
             tmdbService,
             _metadataExtractor,
             _linkExtractor);
-        _detailPageParser = new ApacheTorrentDetailPageParser(
-            loggerFactory.CreateLogger<ApacheTorrentDetailPageParser>(),
+        _detailPageParser = new RedeTorrentDetailPageParser(
+            loggerFactory.CreateLogger<RedeTorrentDetailPageParser>(),
             _metadataExtractor,
             _configuration);
     }
 
-    public override string Name => "ApacheTorrent";
+    public override string Name => "RedeTorrent";
     public override bool IsEnabled => true;
 
     public override async Task<IEnumerable<MediaItem>> SearchAsync(SearchRequest request, CancellationToken cancellationToken = default)

@@ -117,22 +117,16 @@ public abstract class BaseScraper : IScraper
         MediaType type = MediaType.Unknown)
     {
         var normalizedTitle = TitleNormalizer.NormalizeTitle(title, type);
-        var languages = TitleNormalizer.DetectLanguages(title);
-        var resolution = TitleNormalizer.DetectResolution(title);
-
-        var tmdbmovieDetails = TmdbService.GetTmdbMovieDetailsAsync(normalizedTitle, publishDate?.Year).GetAwaiter().GetResult();
 
         var item = new MediaItem
         {
             Title = title,
             PageUrl = pageUrl,
             NormalizedTitle = normalizedTitle,
-            Languages = languages,
-            Resolution = resolution,
             Type = type,
-            ImdbId = tmdbmovieDetails?.ImdbId,
-            PublishDate = tmdbmovieDetails?.ReleaseDate ?? publishDate ?? DateTime.UtcNow,
-            Guid = Guid.NewGuid().ToString()
+            PublishDate = publishDate ?? DateTime.UtcNow,
+            Guid = Guid.NewGuid().ToString(),
+            Scraper = Name
         };
 
         // Determine if it's a magnet or torrent link
@@ -153,72 +147,16 @@ public abstract class BaseScraper : IScraper
         return item;
     }
 
-    protected virtual long ParseFileSize(string? sizeText)
+    protected virtual void NormalizeTitleMediaItem(MediaItem item)
     {
-        if (string.IsNullOrWhiteSpace(sizeText))
-            return 0;
+        item.NormalizedTitle = TitleNormalizer.NormalizeTitle(item);
 
-        var normalized = sizeText.Trim().ToUpperInvariant();
-        var multiplier = 1L;
+        var tmdbmovieDetails = TmdbService.GetTmdbMovieDetailsAsync(item.NormalizedTitle).GetAwaiter().GetResult();
 
-        if (normalized.EndsWith("GB", StringComparison.OrdinalIgnoreCase))
-        {
-            multiplier = 1024L * 1024L * 1024L;
-            normalized = normalized.Replace("GB", "").Trim();
-        }
-        else if (normalized.EndsWith("MB", StringComparison.OrdinalIgnoreCase))
-        {
-            multiplier = 1024L * 1024L;
-            normalized = normalized.Replace("MB", "").Trim();
-        }
-        else if (normalized.EndsWith("KB", StringComparison.OrdinalIgnoreCase))
-        {
-            multiplier = 1024L;
-            normalized = normalized.Replace("KB", "").Trim();
-        }
-
-        if (double.TryParse(normalized,
-                            NumberStyles.Any,
-                            CultureInfo.InvariantCulture, 
-                            out var value))
-        {
-            return (long)(value * multiplier);
-        }
-
-        return 0;
-    }
-
-    protected virtual DateTime ParseDate(string? dateText)
-    {
-        if (string.IsNullOrWhiteSpace(dateText))
-            return DateTime.UtcNow;
-
-        // Try common date formats
-        var formats = new[]
-        {
-            "yyyy-MM-dd",
-            "dd/MM/yyyy",
-            "MM/dd/yyyy",
-            "yyyy-MM-dd HH:mm:ss",
-            "dd-MM-yyyy",
-            "dd.MM.yyyy"
-        };
-
-        foreach (var format in formats)
-        {
-            if (DateTime.TryParseExact(dateText, format, null, System.Globalization.DateTimeStyles.None, out var date))
-            {
-                return date;
-            }
-        }
-
-        // Fallback to TryParse
-        if (DateTime.TryParse(dateText, out var parsedDate))
-        {
-            return parsedDate;
-        }
-
-        return DateTime.UtcNow;
+        item.Title = tmdbmovieDetails?.Title ?? item.Title;
+        item.NormalizedTitle = tmdbmovieDetails?.Title ?? item.NormalizedTitle;
+        item.PublishDate = tmdbmovieDetails?.ReleaseDate ?? item.PublishDate;
+        item.ImdbId = tmdbmovieDetails?.ImdbId;
     }
 }
 

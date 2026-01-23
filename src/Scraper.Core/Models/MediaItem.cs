@@ -18,6 +18,7 @@ public class MediaItem
     public string? Description { get; set; }
     public int? Seeders { get; set; }
     public int? Leechers { get; set; }
+    public string Scraper { get; set; }
 }
 
 public enum MediaLanguage

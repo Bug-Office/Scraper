@@ -5,6 +5,7 @@ namespace Scraper.Core.Interfaces;
 public interface ITitleNormalizer
 {
     string NormalizeTitle(string title, Models.MediaType type);
+    string NormalizeTitle(MediaItem item);
     Models.MediaLanguage DetectLanguage(string title); // Mantido para compatibilidade
     List<Models.MediaLanguage> DetectLanguages(string title);
     string DetectResolution(string title);

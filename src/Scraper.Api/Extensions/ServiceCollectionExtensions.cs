@@ -44,7 +44,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMediaItemRepository, MediaItemRepository>();
 
         // Register Scrapers
-        services.AddScoped<IScraper, ApacheTorrentScraper>();        
+        services.AddScoped<IScraper, ApacheTorrentScraper>();
+        services.AddScoped<IScraper, RedeTorrentScraper>();
 
         return services;
     }

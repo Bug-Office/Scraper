@@ -520,19 +520,14 @@
                     <textarea id="${scraperName}-headers" 
                               placeholder='{"X-Custom-Header": "value"}'>${getJsonValue(settings.headers)}</textarea>
                 </div>
-            `;
 
-            // Apache Torrent specific settings
-            if (scraperName === 'ApacheTorrent') {
-                html += `
-                    <div class="setting-item">
-                        <label>Search URL Pattern:</label>
-                        <input type="text" id="${scraperName}-searchPattern" 
-                               value="${settings.searchPattern || '/index.php?s={query}'}" 
-                               placeholder="/index.php?s={query}">
-                    </div>
-                `;
-            }
+                <div class="setting-item">
+                    <label>Search URL Pattern:</label>
+                    <input type="text" id="${scraperName}-searchPattern" 
+                           value="${settings.searchPattern || '/index.php?s={query}'}" 
+                           placeholder="/index.php?s={query}">
+                </div>
+            `;
 
             return html;
         }

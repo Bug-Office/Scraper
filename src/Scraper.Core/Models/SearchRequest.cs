@@ -6,6 +6,7 @@ public class SearchRequest
     public int Offset { get; set; } = 0;
     public int Limit { get; set; } = 100;
     public string? ImdbId { get; set; }
+    public bool SkipDatabase { get; set; } = false;
     public MediaType? Type { get; set; }
     public int? Season { get; set; }
     public int? Episode { get; set; }
