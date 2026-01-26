@@ -1,11 +1,12 @@
 using Scraper.Core.Models;
 
-namespace Scraper.Infrastructure.Parsers.RedeTorrent;
+namespace Scraper.Infrastructure.Parsers.GenericTorrent;
 
 /// <summary>
-/// Metadata extractor specific to Rede Torrent website
+/// Generic metadata extractor for torrent sites
+/// Uses common patterns found in torrent sites
 /// </summary>
-public class RedeTorrentMetadataExtractor : BaseMetadataExtractor
+public class GenericTorrentMetadataExtractor : BaseMetadataExtractor
 {
     public override List<MediaLanguage> ExtractLanguages(string? text)
     {

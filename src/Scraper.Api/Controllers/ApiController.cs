@@ -17,17 +17,25 @@ public class ApiController : ControllerBase
     }
 
     [HttpGet("scrapers")]
-    public IActionResult GetScrapers()
+    public async Task<IActionResult> GetScrapers()
     {
         try
         {
-            var scrapers = _serviceProvider.GetServices<IScraper>()
-                .Select(s => new
+            var dynamicScraperService = _serviceProvider.GetRequiredService<Scraper.Infrastructure.Services.DynamicScraperService>();
+            var allScrapers = await dynamicScraperService.GetAllScrapersAsync();
+            
+            var scraperConfigService = _serviceProvider.GetRequiredService<Scraper.Infrastructure.Services.ScraperConfigService>();
+            var allScraperConfigs = await scraperConfigService.GetAllScraperConfigsAsync();
+            
+            var scrapers = allScrapers.Select(s =>
+            {
+                var dbConfig = allScraperConfigs.FirstOrDefault(sc => sc.Name.Equals(s.Name, StringComparison.OrdinalIgnoreCase));
+                return new
                 {
                     name = s.Name,
-                    isEnabled = s.IsEnabled
-                })
-                .ToList();
+                    isEnabled = dbConfig?.IsEnabled ?? s.IsEnabled
+                };
+            }).ToList();
 
             return Ok(scrapers);
         }

@@ -3,15 +3,16 @@ using Microsoft.Extensions.Logging;
 using Scraper.Core.Models;
 using Scraper.Infrastructure.Configurations;
 
-namespace Scraper.Infrastructure.Parsers.ApacheTorrent;
+namespace Scraper.Infrastructure.Parsers.GenericTorrent;
 
 /// <summary>
-/// Detail page parser specific to Apache Torrent website
+/// Generic detail page parser for torrent sites
+/// Uses common patterns found in torrent sites
 /// </summary>
-public class ApacheTorrentDetailPageParser : BaseDetailPageParser
+public class GenericTorrentDetailPageParser : BaseDetailPageParser
 {
-    public ApacheTorrentDetailPageParser(
-        ILogger<ApacheTorrentDetailPageParser> logger,
+    public GenericTorrentDetailPageParser(
+        ILogger<GenericTorrentDetailPageParser> logger,
         IMetadataExtractor metadataExtractor,
         ScraperConfiguration configuration)
         : base(logger, metadataExtractor, configuration)
@@ -28,8 +29,6 @@ public class ApacheTorrentDetailPageParser : BaseDetailPageParser
             doc.LoadHtml(html);
 
             var infoSection = GetInfoSection(doc);
-            var infoText = infoSection?.InnerText ?? string.Empty;
-
             var infoBlock = ExtractInfoBlock(infoSection);
 
             // Extract size

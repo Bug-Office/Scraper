@@ -99,7 +99,8 @@ public class ConfigurationService : IConfigurationService
         {
             var options = new JsonSerializerOptions
             {
-                WriteIndented = true
+                WriteIndented = true,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
             };
 
             var json = JsonSerializer.Serialize(config, options);
@@ -148,20 +149,33 @@ public class ConfigurationService : IConfigurationService
 
     public async Task UpdateScraperConfigAsync(ScraperConfig scraperConfig)
     {
-        var config = await GetConfigurationAsync();
-        var existing = config.Scrapers.FirstOrDefault(s => s.Name.Equals(scraperConfig.Name, StringComparison.OrdinalIgnoreCase));
-
-        if (existing != null)
+        try
         {
-            existing.IsEnabled = scraperConfig.IsEnabled;
-            existing.Settings = scraperConfig.Settings;
-        }
-        else
-        {
-            config.Scrapers.Add(scraperConfig);
-        }
+            var config = await GetConfigurationAsync();
+            var existing = config.Scrapers.FirstOrDefault(s => s.Name.Equals(scraperConfig.Name, StringComparison.OrdinalIgnoreCase));
 
-        await SaveConfigurationAsync(config);
+            if (existing != null)
+            {
+                _logger.LogInformation("Updating existing scraper config: {ScraperName}, Settings count: {SettingsCount}", 
+                    scraperConfig.Name, scraperConfig.Settings?.Count ?? 0);
+                existing.IsEnabled = scraperConfig.IsEnabled;
+                existing.Settings = scraperConfig.Settings ?? new Dictionary<string, string>();
+            }
+            else
+            {
+                _logger.LogInformation("Adding new scraper config: {ScraperName}, Settings count: {SettingsCount}", 
+                    scraperConfig.Name, scraperConfig.Settings?.Count ?? 0);
+                config.Scrapers.Add(scraperConfig);
+            }
+
+            await SaveConfigurationAsync(config);
+            _logger.LogInformation("Successfully saved scraper config to database: {ScraperName}", scraperConfig.Name);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating scraper config: {ScraperName}", scraperConfig.Name);
+            throw;
+        }
     }
 
     private static string GenerateApiKey()

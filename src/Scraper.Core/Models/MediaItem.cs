@@ -14,6 +14,7 @@ public class MediaItem
     public List<MediaLanguage> Languages { get; set; } = new();
     public MediaType Type { get; set; }
     public string? ImdbId { get; set; }
+    public string? TmdbId { get; set; }
     public string Guid { get; set; } = System.Guid.NewGuid().ToString();
     public string? Description { get; set; }
     public int? Seeders { get; set; }

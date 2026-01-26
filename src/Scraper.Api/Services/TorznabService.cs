@@ -4,6 +4,7 @@ using Scraper.Core.Models;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using System.Xml.Serialization;
 
 namespace Scraper.Api.Services;
@@ -119,7 +120,7 @@ public class TorznabService
             Guid = new TorznabGuid
             {
                 //IsPermaLink = false,
-                Value = item.PageUrl
+                Value = magnet
             },
 
             Link = magnet,
@@ -144,7 +145,10 @@ public class TorznabService
 
             Attributes = new List<TorznabAttribute>
             {
-                //new() { Name = "imdbid", Value = item.ImdbId! },
+                new() { Name = "indexer", Value = item.Scraper },
+                new() { Name = "source", Value = "torrent" },
+                new() { Name = "imdbId", Value = item.ImdbId ?? "" },
+                new() { Name = "tmdbId", Value = item.TmdbId ?? "" },
                 new() { Name = "category", Value = "2000" },
                 new() { Name = "tag", Value = item.Scraper },
                 new() { Name = "genre", Value = "" },

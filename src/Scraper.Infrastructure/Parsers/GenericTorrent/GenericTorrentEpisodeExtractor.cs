@@ -5,15 +5,18 @@ using Scraper.Core.Models;
 using Scraper.Infrastructure.Interfaces;
 using System.Text.RegularExpressions;
 
-namespace Scraper.Infrastructure.Parsers.RedeTorrent;
+namespace Scraper.Infrastructure.Parsers.GenericTorrent;
 
 /// <summary>
-/// Episode extractor specific to Rede Torrent website
+/// Generic episode extractor for torrent sites
+/// Uses common patterns found in torrent sites
 /// </summary>
-public class RedeTorrentEpisodeExtractor : BaseEpisodeExtractor
+public class GenericTorrentEpisodeExtractor : BaseEpisodeExtractor
 {
-    public RedeTorrentEpisodeExtractor(
-        ILogger<RedeTorrentEpisodeExtractor> logger,
+    private static readonly Regex YearRegex = new(@"\(Filme de (\d{4})\)|\(Série de (\d{4})\)", RegexOptions.Compiled);
+
+    public GenericTorrentEpisodeExtractor(
+        ILogger<GenericTorrentEpisodeExtractor> logger,
         ITitleNormalizer titleNormalizer,
         ITmdbService tmdbService,
         IMetadataExtractor metadataExtractor,
@@ -123,7 +126,7 @@ public class RedeTorrentEpisodeExtractor : BaseEpisodeExtractor
     private string? ExtractDateFromText(string text)
     {
         // Look for year in "Filme de YYYY" or "Série de YYYY"
-        var yearMatch = Regex.Match(text, @"\(Filme de (\d{4})\)|\(Série de (\d{4})\)", RegexOptions.Compiled);
+        var yearMatch = YearRegex.Match(text);
         if (yearMatch.Success)
         {
             var year = yearMatch.Groups[1].Success ? yearMatch.Groups[1].Value : yearMatch.Groups[2].Value;

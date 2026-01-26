@@ -147,16 +147,17 @@ public abstract class BaseScraper : IScraper
         return item;
     }
 
-    protected virtual void NormalizeTitleMediaItem(MediaItem item)
+    protected virtual void NormalizeMediaItem(MediaItem item)
     {
         item.NormalizedTitle = TitleNormalizer.NormalizeTitle(item);
 
-        var tmdbmovieDetails = TmdbService.GetTmdbMovieDetailsAsync(item.NormalizedTitle).GetAwaiter().GetResult();
+        var tmdbmovieDetails = TmdbService.GetTmdbMovieDetailsByTitleAsync(item.NormalizedTitle).GetAwaiter().GetResult();
 
         item.Title = tmdbmovieDetails?.Title ?? item.Title;
         item.NormalizedTitle = tmdbmovieDetails?.Title ?? item.NormalizedTitle;
         item.PublishDate = tmdbmovieDetails?.ReleaseDate ?? item.PublishDate;
-        item.ImdbId = tmdbmovieDetails?.ImdbId;
+        item.ImdbId = tmdbmovieDetails?.ImdbId.Split("tt").ElementAt(1);
+        item.TmdbId = tmdbmovieDetails?.Id.ToString();
     }
 }
 

@@ -14,7 +14,7 @@ public class TmdbService : ITmdbService
     private readonly HttpClient _httpClient;
     private readonly ILogger<TmdbService> _logger;
     private readonly IServiceScopeFactory? _serviceScopeFactory;
-    private string? _cachedApiKey;
+    private string? _apiKey;
 
     public TmdbService(
         HttpClient httpClient,
@@ -26,12 +26,12 @@ public class TmdbService : ITmdbService
         _serviceScopeFactory = serviceScopeFactory;
         
         _httpClient.DefaultRequestHeaders.Add("accept", "application/json");
+
+        _apiKey = GetApiKeyAsync().GetAwaiter().GetResult();
     }
 
     private async Task<string?> GetApiKeyAsync()
     {
-        if (_cachedApiKey != null)
-            return _cachedApiKey;
 
         if (_serviceScopeFactory == null)
             return null;
@@ -41,8 +41,7 @@ public class TmdbService : ITmdbService
             using var scope = _serviceScopeFactory.CreateScope();
             var configService = scope.ServiceProvider.GetRequiredService<IConfigurationService>();
             var config = await configService.GetConfigurationAsync();
-            _cachedApiKey = config.TmdbApiKey;
-            return _cachedApiKey;
+            return config.TmdbApiKey;
         }
         catch (Exception ex)
         {
@@ -51,11 +50,9 @@ public class TmdbService : ITmdbService
         }
     }
 
-    public async Task<TmdbMovieDetails?> GetTmdbMovieDetailsAsync(string title, int? year = null, CancellationToken cancellationToken = default)
-    {
-        var apiKey = await GetApiKeyAsync();
-        
-        if (string.IsNullOrWhiteSpace(apiKey))
+    public async Task<TmdbMovieDetails?> GetTmdbMovieDetailsByTitleAsync(string title, int? year = null, CancellationToken cancellationToken = default)
+    {        
+        if (string.IsNullOrWhiteSpace(_apiKey))
         {
             _logger.LogDebug("TMDB API key not configured, skipping IMDB ID lookup");
             return null;
@@ -63,7 +60,7 @@ public class TmdbService : ITmdbService
 
         // Set authorization header (remove old one if exists, then add new)
         _httpClient.DefaultRequestHeaders.Remove("Authorization");
-        _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+        _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
 
         if (string.IsNullOrWhiteSpace(title))
         {
@@ -122,6 +119,76 @@ public class TmdbService : ITmdbService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error searching TMDB for: {Title}", title);
+            return null;
+        }
+    }
+
+
+    public async Task<TmdbMovieDetails?> GetTmdbMovieDetailsByExternalSource(string externalId, string externalSource = "imdb_id", CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_apiKey))
+        {
+            _logger.LogDebug("TMDB API key not configured, skipping IMDB ID lookup");
+            return null;
+        }
+
+        // Set authorization header (remove old one if exists, then add new)
+        _httpClient.DefaultRequestHeaders.Remove("Authorization");
+        _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
+
+        if (string.IsNullOrWhiteSpace(externalId))
+        {
+            return null;
+        }
+
+        try
+        {
+            if(externalSource == "imdb_id" && !externalId.StartsWith("tt"))
+            {
+                externalId = "tt" + externalId;
+            }
+
+            // Step 1: Search for movie by ImdbId
+            var searchUrl = $"{BaseUrl}/find/{externalId}?external_source={externalSource}";
+            searchUrl += "&page=1&language=pt-br";
+
+            _logger.LogDebug("Searching TMDB movie for: External Id '{ExternalId}' - External Source '{ExternalSource}'", externalId, externalSource);
+
+            var searchResponse = await _httpClient.GetFromJsonAsync<TmdbFindResponse>(searchUrl, cancellationToken);
+
+            if (searchResponse?.Results == null || !searchResponse.Results.Any())
+            {
+                _logger.LogDebug("No results found in TMDB for: External Id '{ExternalId}' - External Source '{ExternalSource}'", externalId, externalSource);
+                return null;
+            }
+
+            // Get the first result (most relevant)
+            var movie = searchResponse.Results.First();
+            var movieId = movie.Id;
+            var movieTitle = movie.Title;
+
+            _logger.LogDebug("Found TMDB movie ID {MovieId} for: {Title}", movieId, movieTitle);
+
+            // Step 2: Get movie details to retrieve IMDB ID
+            var detailsUrl = $"{BaseUrl}/movie/{movieId}?language=pt-br";
+            var detailsResponse = await _httpClient.GetFromJsonAsync<TmdbMovieDetails>(detailsUrl, cancellationToken);
+
+            _logger.LogDebug("Found IMDB ID {ImdbId} for movie: {Title}", detailsResponse.ImdbId, movieTitle);
+            return detailsResponse;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "HTTP error while searching TMDB for: External Id '{ExternalId}' - External Source '{ExternalSource}'", externalId, externalSource);
+            return null;
+        }
+        catch (TaskCanceledException)
+        {
+            _logger.LogWarning("Request timeout while searching TMDB for: External Id '{ExternalId}' - External Source '{ExternalSource}'", externalId, externalSource);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error searching TMDB for: External Id '{ExternalId}' - External Source '{ExternalSource}'", externalId, externalSource);
             return null;
         }
     }

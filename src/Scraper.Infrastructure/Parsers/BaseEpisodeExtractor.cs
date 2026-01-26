@@ -103,7 +103,7 @@ public abstract class BaseEpisodeExtractor : IEpisodeExtractor
         var languages = TitleNormalizer.DetectLanguages(episodeTitle);
         var resolution = TitleNormalizer.DetectResolution(episodeTitle);
 
-        var tmdbDetails = TmdbService.GetTmdbMovieDetailsAsync(normalizedTitle, null).GetAwaiter().GetResult();
+        var tmdbDetails = TmdbService.GetTmdbMovieDetailsByTitleAsync(normalizedTitle, null).GetAwaiter().GetResult();
 
         var item = new MediaItem
         {

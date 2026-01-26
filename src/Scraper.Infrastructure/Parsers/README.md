@@ -18,12 +18,14 @@ Esta pasta contém as classes modulares para parsing e extração de dados de si
 - **`BaseEpisodeExtractor`**: Implementação base para extração de episódios
 - **`BaseDetailPageParser`**: Implementação base para parsing de páginas de detalhes
 
-### Implementações Específicas
+### Implementações Genéricas
 
-- **`ApacheTorrentMetadataExtractor`**: Extrator específico para Apache Torrent
-- **`ApacheTorrentLinkExtractor`**: Extrator de links específico para Apache Torrent
-- **`ApacheTorrentEpisodeExtractor`**: Extrator de episódios específico para Apache Torrent
-- **`ApacheTorrentDetailPageParser`**: Parser de detalhes específico para Apache Torrent
+- **`GenericTorrentMetadataExtractor`**: Extrator genérico para sites de torrent (usado por todos os scrapers)
+- **`GenericTorrentLinkExtractor`**: Extrator de links genérico para sites de torrent
+- **`GenericTorrentEpisodeExtractor`**: Extrator de episódios genérico para sites de torrent
+- **`GenericTorrentDetailPageParser`**: Parser de detalhes genérico para sites de torrent
+
+> **Nota**: Para sites com estruturas muito diferentes, você pode criar implementações específicas herdando das classes base.
 
 ## Como Criar um Novo Scraper
 
@@ -50,7 +52,38 @@ public static class MeuSiteConfiguration
 }
 ```
 
-### 2. Criar Extratores Específicos (se necessário)
+### 2. Criar o Scraper (usando ConfigurableTorrentScraper)
+
+Para sites com estrutura similar aos sites brasileiros de torrent, você pode usar o `ConfigurableTorrentScraper`:
+
+```csharp
+// Em Scrapers/MeuSiteScraper.cs
+public class MeuSiteScraper : ConfigurableTorrentScraper
+{
+    public MeuSiteScraper(
+        ITitleNormalizer titleNormalizer,
+        ILogger<MeuSiteScraper> logger,
+        ITmdbService tmdbService,
+        ILoggerFactory loggerFactory,
+        IFlareSolverrService? flareSolverrService = null,
+        IMediaItemRepository? mediaItemRepository = null)
+        : base(
+            "MeuSite",
+            MeuSiteConfiguration.Create(),
+            titleNormalizer,
+            logger,
+            tmdbService,
+            loggerFactory,
+            flareSolverrService,
+            mediaItemRepository)
+    {
+    }
+}
+```
+
+### 3. Criar Extratores Específicos (apenas se necessário)
+
+Se o site tiver uma estrutura muito diferente, você pode criar implementações específicas:
 
 ```csharp
 // Em Parsers/MeuSiteMetadataExtractor.cs
@@ -66,30 +99,7 @@ public class MeuSiteMetadataExtractor : BaseMetadataExtractor
 }
 ```
 
-### 3. Criar o Scraper
-
-```csharp
-// Em Scrapers/MeuSiteScraper.cs
-public class MeuSiteScraper : BaseScraper
-{
-    private readonly ScraperConfiguration _configuration;
-    private readonly IMetadataExtractor _metadataExtractor;
-    private readonly ILinkExtractor _linkExtractor;
-    private readonly IEpisodeExtractor _episodeExtractor;
-    private readonly IDetailPageParser _detailPageParser;
-
-    public MeuSiteScraper(...)
-    {
-        _configuration = MeuSiteConfiguration.Create();
-        _metadataExtractor = new MeuSiteMetadataExtractor();
-        _linkExtractor = new BaseLinkExtractor(); // Ou MeuSiteLinkExtractor se necessário
-        _episodeExtractor = new BaseEpisodeExtractor(...); // Ou MeuSiteEpisodeExtractor
-        _detailPageParser = new BaseDetailPageParser(...); // Ou MeuSiteDetailPageParser
-    }
-
-    // Implementar SearchAsync usando os componentes modulares
-}
-```
+E então criar um scraper customizado herdando de `BaseScraper` (veja exemplo completo abaixo).
 
 ## Benefícios da Arquitetura Modular
 
@@ -101,4 +111,10 @@ public class MeuSiteScraper : BaseScraper
 
 ## Exemplo Completo
 
-Veja `ApacheTorrentScraper.cs` como exemplo completo de como usar a arquitetura modular.
+### Exemplo Simples (usando ConfigurableTorrentScraper)
+
+Todos os scrapers são criados dinamicamente através do `DynamicScraperService` usando configurações do banco de dados/JSON. Veja `ConfigurableTorrentScraper.cs` para entender como os scrapers são implementados.
+
+### Exemplo Completo (scraper customizado)
+
+Se precisar de um scraper completamente customizado, veja `ConfigurableTorrentScraper.cs` como referência de como implementar usando os componentes modulares.

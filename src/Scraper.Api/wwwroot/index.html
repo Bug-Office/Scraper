@@ -279,6 +279,18 @@
             border-radius: 4px;
         }
 
+        .scraper-settings h4 {
+            font-size: 1.1em;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .scraper-settings small {
+            font-size: 0.85em;
+            color: #666;
+        }
+
         .loading {
             text-align: center;
             padding: 40px;
@@ -319,6 +331,7 @@
                         <div style="display: flex; gap: 10px; align-items: center; width: 100%;">
                             <input type="text" id="apiKey" readonly style="flex: 1; font-family: monospace; background: #f8f9fa;">
                             <button class="btn btn-secondary" onclick="copyApiKey()" style="padding: 8px 16px;">📋 Copy</button>
+                            <button class="btn btn-primary" onclick="generateNewApiKey()" style="padding: 8px 16px;">🔄 Generate New</button>
                         </div>
                     </div>
                     <p style="margin-top: 10px; color: #666; font-size: 0.9em;">
@@ -378,7 +391,12 @@
             </div>
 
             <div class="section">
-                <h2 class="section-title">🔍 Scrapers Configuration</h2>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h2 class="section-title" style="margin: 0;">🔍 Scrapers Configuration</h2>
+                    <button class="btn btn-primary" onclick="showCreateScraperDialog()" style="padding: 8px 16px; font-size: 14px;">
+                        ➕ Add New Scraper
+                    </button>
+                </div>
                 <div id="scrapers-container">
                     <div class="loading">
                         <div class="spinner"></div>
@@ -444,7 +462,7 @@
             }
         }
 
-        function renderConfiguration() {
+        async function renderConfiguration() {
             // Update API Key
             const apiKey = currentConfig.apiKey || '';
             document.getElementById('apiKey').value = apiKey;
@@ -466,16 +484,15 @@
             document.getElementById('allowCors').checked = currentConfig.allowCors || false;
             document.getElementById('enhancedLogging').checked = currentConfig.enhancedLogging || false;
 
+            // Load detailed configurations for all scrapers
+            await Promise.all(availableScrapers.map(scraper => loadScraperConfiguration(scraper.name)));
+
             // Render scrapers
             const container = document.getElementById('scrapers-container');
             container.innerHTML = '';
 
             availableScrapers.forEach(scraper => {
-                const scraperConfig = currentConfig.scrapers.find(s => s.name === scraper.name) || {
-                    name: scraper.name,
-                    isEnabled: true,
-                    settings: {}
-                };
+                const isEnabled = scraper.isEnabled ?? true;
 
                 const card = document.createElement('div');
                 card.className = 'scraper-card';
@@ -483,70 +500,181 @@
                     <div class="scraper-header">
                         <div>
                             <span class="scraper-name">${scraper.name}</span>
-                            <span class="status-badge ${scraperConfig.isEnabled ? 'status-enabled' : 'status-disabled'}">
-                                ${scraperConfig.isEnabled ? 'Enabled' : 'Disabled'}
+                            <span class="status-badge ${isEnabled ? 'status-enabled' : 'status-disabled'}">
+                                ${isEnabled ? 'Enabled' : 'Disabled'}
                             </span>
                         </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" ${scraperConfig.isEnabled ? 'checked' : ''} 
-                                   onchange="toggleScraper('${scraper.name}', this.checked)">
-                            <span class="slider"></span>
-                        </label>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <label class="toggle-switch">
+                                <input type="checkbox" ${isEnabled ? 'checked' : ''} 
+                                       onchange="toggleScraper('${scraper.name}', this.checked)">
+                                <span class="slider"></span>
+                            </label>
+                            <button class="btn btn-danger" onclick="deleteScraper('${scraper.name}')" style="padding: 6px 12px; font-size: 12px;">🗑️ Delete</button>
+                        </div>
                     </div>
                     <div class="scraper-settings" id="settings-${scraper.name}">
-                        ${renderScraperSettings(scraper.name, scraperConfig.settings)}
+                        ${renderScraperSettings(scraper.name, {})}
                     </div>
                 `;
                 container.appendChild(card);
             });
         }
 
-        function renderScraperSettings(scraperName, settings) {
-            // Common settings for all scrapers
-            let html = `
-                <div class="setting-item">
-                    <label>Base URL:</label>
-                    <input type="text" id="${scraperName}-baseUrl" 
-                           value="${settings.baseUrl || ''}" 
-                           placeholder="https://example.com">
-                </div>
-                <div class="setting-item">
-                    <label>Cookies (JSON format):</label>
-                    <textarea id="${scraperName}-cookies" 
-                              placeholder='{"session_id": "value", "token": "value"}'>${getJsonValue(settings.cookies)}</textarea>
-                </div>
-                <div class="setting-item">
-                    <label>Custom Headers (JSON format):</label>
-                    <textarea id="${scraperName}-headers" 
-                              placeholder='{"X-Custom-Header": "value"}'>${getJsonValue(settings.headers)}</textarea>
-                </div>
+        let scraperConfigurations = {};
 
-                <div class="setting-item">
-                    <label>Search URL Pattern:</label>
-                    <input type="text" id="${scraperName}-searchPattern" 
-                           value="${settings.searchPattern || '/index.php?s={query}'}" 
-                           placeholder="/index.php?s={query}">
+        async function loadScraperConfiguration(scraperName) {
+            try {
+                const response = await fetch(`/api/configuration/scraper/${scraperName}`);
+                if (response.ok) {
+                    scraperConfigurations[scraperName] = await response.json();
+                }
+            } catch (error) {
+                console.warn(`Failed to load detailed configuration for ${scraperName}:`, error);
+            }
+        }
+
+        function renderScraperSettings(scraperName, settings) {
+            const config = scraperConfigurations[scraperName] || {};
+            
+            // Helper function to render list inputs
+            function renderListInput(id, label, values, placeholder = '') {
+                const valueStr = Array.isArray(values) ? values.join('\n') : '';
+                return `
+                    <div class="setting-item">
+                        <label>${label} (one per line):</label>
+                        <textarea id="${scraperName}-${id}" 
+                                  rows="3"
+                                  placeholder="${placeholder}">${valueStr}</textarea>
+                    </div>
+                `;
+            }
+
+            let html = `
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div>
+                        <h4 style="margin-bottom: 10px; color: #667eea;">Basic Settings</h4>
+                        <div class="setting-item">
+                            <label>Base URL:</label>
+                            <input type="text" id="${scraperName}-baseUrl" 
+                                   value="${config.baseUrl || settings.baseUrl || ''}" 
+                                   placeholder="https://example.com">
+                        </div>
+                        <div class="setting-item">
+                            <label>Search URL Template:</label>
+                            <input type="text" id="${scraperName}-searchUrlTemplate" 
+                                   value="${config.searchUrlTemplate || '{BaseUrl}/index.php?s={Query}'}" 
+                                   placeholder="{BaseUrl}/search?q={Query}">
+                            <small style="color: #666; display: block; margin-top: 5px;">
+                                Use {BaseUrl} and {Query} as placeholders
+                            </small>
+                        </div>
+                        <div class="setting-item">
+                            <label>Cookies (JSON format):</label>
+                            <textarea id="${scraperName}-cookies" 
+                                      rows="3"
+                                      placeholder='{"session_id": "value", "token": "value"}'>${getJsonValue(settings.cookies)}</textarea>
+                        </div>
+                        <div class="setting-item">
+                            <label>Custom Headers (JSON format):</label>
+                            <textarea id="${scraperName}-headers" 
+                                      rows="3"
+                                      placeholder='{"X-Custom-Header": "value"}'>${getJsonValue(settings.headers)}</textarea>
+                        </div>
+                    </div>
+                    <div>
+                        <h4 style="margin-bottom: 10px; color: #667eea;">XPath Selectors</h4>
+                        ${renderListInput('resultItemSelectors', 'Result Item Selectors', config.resultItemSelectors, '//div[@class="item"]')}
+                        ${renderListInput('titleLinkSelectors', 'Title Link Selectors', config.titleLinkSelectors, './/h2//a')}
+                        ${renderListInput('downloadSectionSelectors', 'Download Section Selectors', config.downloadSectionSelectors, '//div[@id="download"]')}
+                        ${renderListInput('episodeParagraphSelectors', 'Episode Paragraph Selectors', config.episodeParagraphSelectors, './/p[contains(., "EPISÓDIO")]')}
+                        ${renderListInput('infoSectionSelectors', 'Info Section Selectors', config.infoSectionSelectors, '//div[contains(@class, "info")]')}
+                    </div>
+                </div>
+                <div style="margin-top: 15px;">
+                    <h4 style="margin-bottom: 10px; color: #667eea;">Title Cleanup Patterns</h4>
+                    ${renderListInput('titleCleanupPatterns', 'Regex Patterns (one per line)', config.titleCleanupPatterns, '(?i)\\s*Torrent\\s*Download\\s*$')}
+                    <small style="color: #666; display: block; margin-top: 5px;">
+                        These regex patterns will be removed from titles. Use (?i) for case-insensitive matching.
+                    </small>
+                </div>
+                <div style="margin-top: 15px;">
+                    <button class="btn btn-primary" onclick="saveScraperConfiguration('${scraperName}')" style="padding: 8px 16px; font-size: 14px;">
+                        💾 Save ${scraperName} Configuration
+                    </button>
                 </div>
             `;
 
             return html;
         }
 
-        function toggleScraper(scraperName, enabled) {
-            if (!currentConfig) return;
+        async function saveScraperConfiguration(scraperName) {
+            try {
+                const config = {
+                    baseUrl: document.getElementById(`${scraperName}-baseUrl`)?.value || '',
+                    searchUrlTemplate: document.getElementById(`${scraperName}-searchUrlTemplate`)?.value || '{BaseUrl}/index.php?s={Query}',
+                    resultItemSelectors: parseListInput(`${scraperName}-resultItemSelectors`),
+                    titleLinkSelectors: parseListInput(`${scraperName}-titleLinkSelectors`),
+                    downloadSectionSelectors: parseListInput(`${scraperName}-downloadSectionSelectors`),
+                    episodeParagraphSelectors: parseListInput(`${scraperName}-episodeParagraphSelectors`),
+                    infoSectionSelectors: parseListInput(`${scraperName}-infoSectionSelectors`),
+                    titleCleanupPatterns: parseListInput(`${scraperName}-titleCleanupPatterns`)
+                };
 
-            let scraperConfig = currentConfig.scrapers.find(s => s.name === scraperName);
-            if (!scraperConfig) {
-                scraperConfig = { name: scraperName, isEnabled: enabled, settings: {} };
-                currentConfig.scrapers.push(scraperConfig);
-            } else {
-                scraperConfig.isEnabled = enabled;
+                const response = await fetch(`/api/configuration/scraper/${scraperName}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                // Update cached configuration
+                scraperConfigurations[scraperName] = config;
+                showSuccess(`${scraperName} configuration saved successfully!`);
+            } catch (error) {
+                console.error('Save scraper configuration error:', error);
+                showError(`Failed to save ${scraperName} configuration: ${error.message}`);
             }
+        }
 
-            // Update status badge
+        function parseListInput(id) {
+            const element = document.getElementById(id);
+            if (!element) return [];
+            const value = element.value.trim();
+            if (!value) return [];
+            return value.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+        }
+
+        async function toggleScraper(scraperName, enabled) {
+            // Update status badge immediately
             const badge = event.target.closest('.scraper-card').querySelector('.status-badge');
             badge.className = `status-badge ${enabled ? 'status-enabled' : 'status-disabled'}`;
             badge.textContent = enabled ? 'Enabled' : 'Disabled';
+
+            // Save scraper enabled status directly to database
+            try {
+                const response = await fetch(`/api/configuration/scraper/${scraperName}/toggle`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ isEnabled: enabled })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                showSuccess(`Scraper ${scraperName} ${enabled ? 'enabled' : 'disabled'} successfully`);
+            } catch (error) {
+                console.error('Error saving scraper toggle:', error);
+                // Revert UI change on error
+                badge.className = `status-badge ${!enabled ? 'status-enabled' : 'status-disabled'}`;
+                badge.textContent = !enabled ? 'Enabled' : 'Disabled';
+                event.target.checked = !enabled;
+                showError(`Failed to ${enabled ? 'enable' : 'disable'} scraper: ${error.message}`);
+            }
         }
 
         async function saveConfiguration() {
@@ -586,54 +714,8 @@
                     // If no API key in display and no API key in config, server will generate one
                 }
 
-                // Ensure scrapers array exists
-                if (!currentConfig.scrapers) {
-                    currentConfig.scrapers = [];
-                }
-
-                // Collect scraper settings
-                availableScrapers.forEach(scraper => {
-                    let scraperConfig = currentConfig.scrapers.find(s => s.name === scraper.name);
-                    if (!scraperConfig) {
-                        scraperConfig = { name: scraper.name, isEnabled: true, settings: {} };
-                        currentConfig.scrapers.push(scraperConfig);
-                    }
-
-                    // Collect settings
-                    const baseUrlEl = document.getElementById(`${scraper.name}-baseUrl`);
-                    const cookiesEl = document.getElementById(`${scraper.name}-cookies`);
-                    const headersEl = document.getElementById(`${scraper.name}-headers`);
-                    const searchPatternEl = document.getElementById(`${scraper.name}-searchPattern`);
-
-                    const baseUrl = baseUrlEl?.value?.trim();
-                    const cookiesText = cookiesEl?.value?.trim();
-                    const headersText = headersEl?.value?.trim();
-                    const searchPattern = searchPatternEl?.value?.trim();
-
-                    scraperConfig.settings = {};
-                    if (baseUrl) scraperConfig.settings.baseUrl = baseUrl;
-                    if (cookiesText) {
-                        try {
-                            // Validate JSON first
-                            JSON.parse(cookiesText);
-                            // Store as JSON string (since Settings is Dictionary<string, string>)
-                            scraperConfig.settings.cookies = cookiesText;
-                        } catch (e) {
-                            throw new Error(`Invalid JSON in cookies for ${scraper.name}: ${e.message}`);
-                        }
-                    }
-                    if (headersText) {
-                        try {
-                            // Validate JSON first
-                            JSON.parse(headersText);
-                            // Store as JSON string (since Settings is Dictionary<string, string>)
-                            scraperConfig.settings.headers = headersText;
-                        } catch (e) {
-                            throw new Error(`Invalid JSON in headers for ${scraper.name}: ${e.message}`);
-                        }
-                    }
-                    if (searchPattern) scraperConfig.settings.searchPattern = searchPattern;
-                });
+                // Note: Scrapers are now saved separately via saveScraperConfiguration()
+                // They are stored in the ScraperConfigs table, not in AppConfiguration
 
                 // Save configuration
                 const response = await fetch('/api/configuration', {
@@ -711,6 +793,40 @@
             showSuccess('API Key copied to clipboard!');
         }
 
+        async function generateNewApiKey() {
+            if (!confirm('Are you sure you want to generate a new API key? The old key will no longer work. You will need to update it in Prowlarr, Radarr, or Sonarr.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/configuration/generate-apikey');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const newApiKey = data.apiKey;
+
+                // Update the input field
+                document.getElementById('apiKey').value = newApiKey;
+                document.getElementById('apiKeyDisplay').textContent = newApiKey;
+
+                // Update currentConfig
+                if (!currentConfig) {
+                    currentConfig = { scrapers: [] };
+                }
+                currentConfig.apiKey = newApiKey;
+
+                // Save the configuration with the new API key
+                await saveConfiguration();
+                
+                showSuccess('New API key generated and saved successfully!');
+            } catch (error) {
+                console.error('Generate API key error:', error);
+                showError(`Failed to generate new API key: ${error.message}`);
+            }
+        }
+
         function getJsonValue(value) {
             if (!value) return '';
             // If it's already a string (from server), return it
@@ -727,12 +843,92 @@
             return JSON.stringify(value, null, 2);
         }
 
-        function copyApiKey() {
-            const apiKeyInput = document.getElementById('apiKey');
-            apiKeyInput.select();
-            apiKeyInput.setSelectionRange(0, 99999); // For mobile devices
-            document.execCommand('copy');
-            showSuccess('API Key copied to clipboard!');
+        async function showCreateScraperDialog() {
+            try {
+                // Load default template
+                const templateResponse = await fetch('/api/configuration/scraper-template');
+                let template = null;
+                if (templateResponse.ok) {
+                    template = await templateResponse.json();
+                }
+
+                const scraperName = prompt('Enter scraper name:', template?.name || 'NewScraper');
+                if (!scraperName || scraperName.trim() === '') {
+                    return;
+                }
+
+                const name = scraperName.trim();
+                
+                // Check if scraper already exists
+                const exists = availableScrapers.some(s => s.name.toLowerCase() === name.toLowerCase());
+                if (exists) {
+                    showError(`Scraper "${name}" already exists`);
+                    return;
+                }
+
+                // Use template configuration or create default
+                const config = template?.configuration || {
+                    baseUrl: '',
+                    searchUrlTemplate: '{BaseUrl}/search?q={Query}',
+                    resultItemSelectors: ['//article', '//div[@class=\'item\']'],
+                    titleLinkSelectors: ['.//h2//a', './/a'],
+                    downloadSectionSelectors: ['//div[@id=\'download\']'],
+                    episodeParagraphSelectors: ['.//p[contains(., \'EPISÓDIO\')]'],
+                    infoSectionSelectors: ['//div[contains(@class, \'info\')]'],
+                    titleCleanupPatterns: []
+                };
+
+                const response = await fetch('/api/configuration/scraper', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: name,
+                        isEnabled: true,
+                        configuration: config
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.text();
+                    throw new Error(error);
+                }
+
+                showSuccess(`Scraper "${name}" created successfully!`);
+                
+                // Reload configuration to show new scraper
+                await loadConfiguration();
+            } catch (error) {
+                console.error('Create scraper error:', error);
+                showError(`Failed to create scraper: ${error.message}`);
+            }
+        }
+
+        async function deleteScraper(scraperName) {
+            if (!confirm(`Are you sure you want to delete scraper "${scraperName}"? This action cannot be undone.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/configuration/scraper/${scraperName}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) {
+                    const error = await response.text();
+                    throw new Error(error);
+                }
+
+                showSuccess(`Scraper "${scraperName}" deleted successfully!`);
+                
+                // Remove from cached configurations
+                delete scraperConfigurations[scraperName];
+                
+                // Reload configuration to refresh list
+                await loadConfiguration();
+            } catch (error) {
+                console.error('Delete scraper error:', error);
+                showError(`Failed to delete scraper: ${error.message}`);
+            }
         }
 
         // Load configuration on page load

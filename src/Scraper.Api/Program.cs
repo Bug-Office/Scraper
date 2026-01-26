@@ -45,6 +45,31 @@ using (var scope = app.Services.CreateScope())
     {
         Log.Error(ex, "Error initializing database");
     }
+
+    // Migrate scrapers from AppConfiguration to ScraperConfigs table (if needed)
+    try
+    {
+        var migrationService = scope.ServiceProvider.GetRequiredService<Scraper.Infrastructure.Services.ScraperMigrationService>();
+        await migrationService.MigrateScrapersAsync();
+        Log.Information("Scraper migration completed");
+    }
+    catch (Exception ex)
+    {
+        Log.Error(ex, "Error during scraper migration");
+    }
+
+    // Initialize default scrapers from JSON file
+    try
+    {
+        var initializationService = scope.ServiceProvider.GetRequiredService<Scraper.Infrastructure.Services.ScraperInitializationService>();
+        var defaultScrapersPath = Path.Combine(app.Environment.ContentRootPath, "data", "default-scrapers.json");
+        await initializationService.InitializeDefaultsAsync(defaultScrapersPath);
+        Log.Information("Default scrapers initialized");
+    }
+    catch (Exception ex)
+    {
+        Log.Error(ex, "Error initializing default scrapers");
+    }
 }
 
 // Enable static files and default files

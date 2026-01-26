@@ -1,0 +1,111 @@
+{
+  "scrapers": [
+    {
+      "name": "ApacheTorrent",
+      "isEnabled": true,
+      "configuration": {
+        "baseUrl": "https://apachetorrent.com",
+        "searchUrlTemplate": "{BaseUrl}/index.php?s={Query}",
+        "resultItemSelectors": [
+          "//div[contains(@class, 'capaname')]",
+          "//article",
+          "//div[contains(@class, 'post')]",
+          "//div[contains(@class, 'item')]",
+          "//div[contains(@class, 'torrent')]"
+        ],
+        "titleLinkSelectors": [
+          ".//h2//a",
+          ".//h2/a",
+          ".//a[contains(@href, 'apachetorrent.com')]",
+          ".//a[contains(@href, '/')]"
+        ],
+        "downloadSectionSelectors": [
+          "//div[@id='download']",
+          "//div[@id='lista_links']"
+        ],
+        "episodeParagraphSelectors": [
+          ".//p[@class='text-center']",
+          ".//p[contains(., 'EPISÓDIO')]"
+        ],
+        "infoSectionSelectors": [
+          "//div[contains(@class, 'infos')]/p",
+          "//div[contains(@class, 'conteudo')]"
+        ],
+        "titleCleanupPatterns": [
+          "(?i)\\s*Torrent\\s*Download\\s*$",
+          "(?i)\\s*Download\\s*$",
+          "(?i)\\s*Baixar\\s*$",
+          "\\s*\\(Filme de \\d{4}\\)\\s*$",
+          "\\s*\\(Série de \\d{4}\\)\\s*$"
+        ]
+      }
+    },
+    {
+      "name": "RedeTorrent",
+      "isEnabled": true,
+      "configuration": {
+        "baseUrl": "https://redetorrent.com",
+        "searchUrlTemplate": "{BaseUrl}/index.php?s={Query}",
+        "resultItemSelectors": [
+          "//div[contains(@class, 'capa_lista')]",
+          "//article",
+          "//div[contains(@class, 'post')]",
+          "//div[contains(@class, 'item')]",
+          "//div[contains(@class, 'torrent')]"
+        ],
+        "titleLinkSelectors": [
+          ".//h2//a",
+          ".//h2/a",
+          ".//a[contains(@href, 'RedeTorrent.com')]",
+          ".//a[contains(@href, '/')]"
+        ],
+        "downloadSectionSelectors": [
+          "//div[@id='download']",
+          "//div[@id='lista_links']"
+        ],
+        "episodeParagraphSelectors": [
+          ".//p[@class='text-center']",
+          ".//p[contains(., 'EPISÓDIO')]"
+        ],
+        "infoSectionSelectors": [
+          "//div[contains(@id, 'informacoes')]/p",
+          "//div[contains(@class, 'conteudo')]"
+        ],
+        "titleCleanupPatterns": [
+          "(?i)\\s*Torrent\\s*Download\\s*$",
+          "(?i)\\s*Download\\s*$",
+          "(?i)\\s*Baixar\\s*$",
+          "\\s*\\(Filme de \\d{4}\\)\\s*$",
+          "\\s*\\(Série de \\d{4}\\)\\s*$",
+          "\\s*\\(\\d{4}\\)\\s*$"
+        ]
+      }
+    }
+  ],
+  "defaultTemplate": {
+    "name": "NewScraper",
+    "isEnabled": true,
+    "configuration": {
+      "baseUrl": "",
+      "searchUrlTemplate": "{BaseUrl}/search?q={Query}",
+      "resultItemSelectors": [
+        "//article",
+        "//div[@class='item']"
+      ],
+      "titleLinkSelectors": [
+        ".//h2//a",
+        ".//a"
+      ],
+      "downloadSectionSelectors": [
+        "//div[@id='download']"
+      ],
+      "episodeParagraphSelectors": [
+        ".//p[contains(., 'EPISÓDIO')]"
+      ],
+      "infoSectionSelectors": [
+        "//div[contains(@class, 'info')]"
+      ],
+      "titleCleanupPatterns": []
+    }
+  }
+}

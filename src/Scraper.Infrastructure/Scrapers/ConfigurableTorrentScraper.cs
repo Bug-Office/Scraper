@@ -1,5 +1,4 @@
 using HtmlAgilityPack;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Scraper.Core.Interfaces;
 using Scraper.Core.Models;
@@ -7,19 +6,18 @@ using Scraper.Infrastructure.Configurations;
 using Scraper.Infrastructure.Http;
 using Scraper.Infrastructure.Interfaces;
 using Scraper.Infrastructure.Parsers;
-using Scraper.Infrastructure.Parsers.ApacheTorrent;
-using System.Linq;
+using Scraper.Infrastructure.Parsers.GenericTorrent;
 using System.Text.RegularExpressions;
 
 namespace Scraper.Infrastructure.Scrapers;
 
 /// <summary>
-/// Scraper for Apache Torrent (https://apachetorrent.com)
-/// Supports movies and series with PT-BR, DUAL, and LEGENDADO releases
+/// Generic configurable scraper for torrent sites
+/// Can be configured for different sites by providing a ScraperConfiguration
 /// </summary>
-public class ApacheTorrentScraper : BaseScraper
+public class ConfigurableTorrentScraper : BaseScraper
 {
-    private static readonly Regex YearRegex = new(@"\(Filme de (\d{4})\)|\(Série de (\d{4})\)", RegexOptions.Compiled);
+    private static readonly Regex YearRegex = new(@"\(Filme de (\d{4})\)|\(Série de (\d{4})\)|\((\d{4})\)", RegexOptions.Compiled);
     private static readonly Regex SeriesRegex = new(@"(?i)(s\d{1,2}e\d{1,2}|season\s*\d+|temporada\s*\d+)", RegexOptions.Compiled);
 
     private readonly ScraperConfiguration _configuration;
@@ -27,49 +25,53 @@ public class ApacheTorrentScraper : BaseScraper
     private readonly ILinkExtractor _linkExtractor;
     private readonly IEpisodeExtractor _episodeExtractor;
     private readonly IDetailPageParser _detailPageParser;
+    private readonly string _scraperName;
 
-    public ApacheTorrentScraper(
+    public ConfigurableTorrentScraper(
+        string scraperName,
+        ScraperConfiguration configuration,
         ITitleNormalizer titleNormalizer,
-        ILogger<ApacheTorrentScraper> logger,
+        ILogger logger,
         ITmdbService tmdbService,
         ILoggerFactory loggerFactory,
         IFlareSolverrService? flareSolverrService = null,
         IMediaItemRepository? mediaItemRepository = null)
         : base(
-            HttpClientFactory.CreateClient(ApacheTorrentConfiguration.Create().BaseUrl),
+            HttpClientFactory.CreateClient(configuration.BaseUrl),
             titleNormalizer,
             logger,
             tmdbService,
             flareSolverrService,
             mediaItemRepository)
     {
-        _configuration = ApacheTorrentConfiguration.Create();
-        _metadataExtractor = new ApacheTorrentMetadataExtractor();
-        _linkExtractor = new ApacheTorrentLinkExtractor();
-        _episodeExtractor = new ApacheTorrentEpisodeExtractor(
-            loggerFactory.CreateLogger<ApacheTorrentEpisodeExtractor>(),
+        _scraperName = scraperName;
+        _configuration = configuration;
+        _metadataExtractor = new GenericTorrentMetadataExtractor();
+        _linkExtractor = new GenericTorrentLinkExtractor();
+        _episodeExtractor = new GenericTorrentEpisodeExtractor(
+            loggerFactory.CreateLogger<GenericTorrentEpisodeExtractor>(),
             titleNormalizer,
             tmdbService,
             _metadataExtractor,
             _linkExtractor);
-        _detailPageParser = new ApacheTorrentDetailPageParser(
-            loggerFactory.CreateLogger<ApacheTorrentDetailPageParser>(),
+        _detailPageParser = new GenericTorrentDetailPageParser(
+            loggerFactory.CreateLogger<GenericTorrentDetailPageParser>(),
             _metadataExtractor,
             _configuration);
     }
 
-    public override string Name => "ApacheTorrent";
+    public override string Name => _scraperName;
     public override bool IsEnabled => true;
 
     public override async Task<IEnumerable<MediaItem>> SearchAsync(SearchRequest request, CancellationToken cancellationToken = default)
     {
-        Logger.LogInformation("Searching Query:'{Query}' | ImdbId: {ImdbId} on '{ScraperName}'", request.Query, request.ImdbId, Name);
+        Logger.LogInformation("Searching Query: '{Query}' | ImdbId: '{ImdbId}' on '{ScraperName}'", request.Query, request.ImdbId, Name);
 
         try
         {
             if (!string.IsNullOrEmpty(request.ImdbId))
             {
-                var results = await MediaItemRepository!.GetByImdbid(request.ImdbId);
+                var results = await SearchByImdbIdAsync(request, cancellationToken = default);
                 return results;
             }
         }
@@ -81,8 +83,52 @@ public class ApacheTorrentScraper : BaseScraper
 
         try
         {
+            var results = await SearchByQueryAsync(request, cancellationToken = default);
+            return results;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error searching {ScraperName}", Name);
+            return Enumerable.Empty<MediaItem>();
+        }
+    }
+
+    public async Task<IEnumerable<MediaItem>> SearchByImdbIdAsync(SearchRequest request, CancellationToken cancellationToken = default)
+    {
+
+        try
+        {
+            if (!string.IsNullOrEmpty(request.ImdbId))
+            {
+                var results = await MediaItemRepository!.GetByImdbId(request.ImdbId);
+                if (results.Any())
+                {
+                    return results;
+                }
+
+                var tmdbmovieDetails = TmdbService.GetTmdbMovieDetailsByExternalSource(request.ImdbId, "imdb_id").GetAwaiter().GetResult();
+                request.Query = tmdbmovieDetails.Title;
+
+                results = await SearchByQueryAsync(request, cancellationToken);
+                return results;
+            }
+            return Enumerable.Empty<MediaItem>();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error searching {ScraperName}", Name);
+            return Enumerable.Empty<MediaItem>();
+        }
+
+    }
+
+    public async Task<IEnumerable<MediaItem>> SearchByQueryAsync(SearchRequest request, CancellationToken cancellationToken = default)
+    {
+
+        try
+        {
             var searchUrl = BuildSearchUrl(request.Query);
-            
+
             Logger.LogDebug("Fetching search results from {Url}", searchUrl);
             string html;
             try
@@ -99,7 +145,7 @@ public class ApacheTorrentScraper : BaseScraper
                 Logger.LogError(ex, "Request canceled while fetching search results from {Url}", searchUrl);
                 return Enumerable.Empty<MediaItem>();
             }
-            
+
             var doc = ParseHtml(html);
             var resultNodes = FindResultNodes(doc);
 
@@ -113,7 +159,7 @@ public class ApacheTorrentScraper : BaseScraper
                 }
                 catch (Exception ex)
                 {
-                    Logger.LogWarning(ex, "Error parsing torrent item from Apache Torrent");
+                    Logger.LogWarning(ex, "Error parsing torrent item from {ScraperName}", Name);
                     return Enumerable.Empty<MediaItem>();
                 }
             });
@@ -128,7 +174,7 @@ public class ApacheTorrentScraper : BaseScraper
             {
                 var pageUrls = allItems.Select(i => i.PageUrl).Distinct().ToList();
                 var existingItems = new List<MediaItem>();
-                
+
                 // Check existence sequentially to avoid DbContext concurrency issues
                 foreach (var url in pageUrls)
                 {
@@ -145,10 +191,10 @@ public class ApacheTorrentScraper : BaseScraper
                         Logger.LogWarning(ex, "Error checking existing items for URL: {Url}", url);
                     }
                 }
-                
+
                 var existingPageUrls = existingItems.Select(i => i.PageUrl).ToHashSet();
                 var newItems = allItems.Where(item => !existingPageUrls.Contains(item.PageUrl)).ToList();
-                
+
                 // Save only new items in batch to avoid DbContext concurrency issues
                 if (newItems.Any())
                 {
@@ -162,7 +208,7 @@ public class ApacheTorrentScraper : BaseScraper
                         Logger.LogWarning(ex, "Failed to save items to database in batch");
                     }
                 }
-                
+
                 // Combine existing and new items
                 allItems = existingItems.Concat(newItems).ToList();
             }
@@ -177,6 +223,7 @@ public class ApacheTorrentScraper : BaseScraper
             return Enumerable.Empty<MediaItem>();
         }
     }
+
 
     private string BuildSearchUrl(string query)
     {
@@ -284,7 +331,7 @@ public class ApacheTorrentScraper : BaseScraper
                 {
                     var html = await FetchHtmlAsync(detailLink, cancellationToken);
                     await _detailPageParser.EnrichMediaItemAsync(item, detailLink, html, cancellationToken);
-                    NormalizeTitleMediaItem(item);
+                    NormalizeMediaItem(item);
                 }
                 catch (Exception ex)
                 {
@@ -310,7 +357,7 @@ public class ApacheTorrentScraper : BaseScraper
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Error parsing torrent item node from Apache Torrent");
+            Logger.LogWarning(ex, "Error parsing torrent item node from {ScraperName}", Name);
             return Enumerable.Empty<MediaItem>();
         }
     }

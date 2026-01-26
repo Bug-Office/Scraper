@@ -24,6 +24,12 @@ namespace Scraper.Core.Models
         public List<TmdbMovieResult> Results { get; set; } = new();
     }
 
+    public class TmdbFindResponse
+    {
+        [JsonPropertyName("movie_results")]
+        public List<TmdbMovieResult> Results { get; set; } = new();
+    }
+
     public class TmdbMovieResult
     {
         [JsonPropertyName("id")]

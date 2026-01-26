@@ -11,6 +11,7 @@ public class ScraperDbContext : DbContext
 
     public DbSet<MediaItemEntity> MediaItems { get; set; }
     public DbSet<ConfigurationEntity> Configurations { get; set; }
+    public DbSet<ScraperConfigEntity> ScraperConfigs { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -31,6 +32,12 @@ public class ScraperDbContext : DbContext
         modelBuilder.Entity<ConfigurationEntity>(entity =>
         {
             entity.HasIndex(e => e.Key).IsUnique();
+        });
+
+        // Configuração para ScraperConfigEntity
+        modelBuilder.Entity<ScraperConfigEntity>(entity =>
+        {
+            entity.HasIndex(e => e.Name).IsUnique();
         });
     }
 }

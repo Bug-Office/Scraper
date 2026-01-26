@@ -8,39 +8,62 @@ namespace Scraper.Infrastructure.Services;
 
 public class ScraperService : IScraperService
 {
-    private readonly IEnumerable<IScraper> _scrapers;
+    private readonly DynamicScraperService _dynamicScraperService;
+    private readonly ScraperConfigService _scraperConfigService;
     private readonly ILogger<ScraperService> _logger;
-    private readonly IConfigurationService _configurationService;
+    private IEnumerable<IScraper>? _allScrapers;
 
     public ScraperService(
-        IEnumerable<IScraper> scrapers, 
-        ILogger<ScraperService> logger,
-        IConfigurationService configurationService)
+        DynamicScraperService dynamicScraperService,
+        ScraperConfigService scraperConfigService,
+        ILogger<ScraperService> logger)
     {
-        _scrapers = scrapers;
+        _dynamicScraperService = dynamicScraperService;
+        _scraperConfigService = scraperConfigService;
         _logger = logger;
-        _configurationService = configurationService;
+    }
+
+    private async Task<IEnumerable<IScraper>> GetAllScrapersAsync()
+    {
+        if (_allScrapers == null)
+        {
+            _allScrapers = await _dynamicScraperService.GetAllScrapersAsync();
+        }
+        return _allScrapers;
+    }
+
+    /// <summary>
+    /// Clears the scraper cache (useful after configuration changes)
+    /// </summary>
+    public void ClearCache()
+    {
+        _allScrapers = null;
+        _dynamicScraperService.ClearCache();
     }
 
     public async Task<IEnumerable<MediaItem>> SearchAsync(SearchRequest request, CancellationToken cancellationToken = default)
     {
         var results = new List<MediaItem>();
         
+        // Get all scrapers (static + dynamic)
+        var allScrapers = await GetAllScrapersAsync();
+        
         // Filter scrapers based on configuration if available
         var scrapersToUse = new List<IScraper>();
-        foreach (var scraper in _scrapers)
+        foreach (var scraper in allScrapers)
         {
             if (!scraper.IsEnabled)
                 continue;            
 
-            var config = await _configurationService.GetScraperConfigAsync(scraper.Name);
-            if (config != null && !config.IsEnabled)
+            // Check enabled status from database
+            var dbConfig = await _scraperConfigService.GetScraperConfigAsync(scraper.Name);
+            if (dbConfig != null && !dbConfig.IsEnabled)
                 continue;
 
             scrapersToUse.Add(scraper);
         }
         
-        _logger.LogInformation("Searching {Query} across {Count} scrapers", request.Query, scrapersToUse.Count);
+        _logger.LogInformation("Searching '{Query}' across '{Count}' scrapers", request.Query, scrapersToUse.Count);
 
         var tasks = scrapersToUse.Select(async scraper =>
         {

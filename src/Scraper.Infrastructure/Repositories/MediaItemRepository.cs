@@ -62,7 +62,7 @@ public class MediaItemRepository : IMediaItemRepository
         return entities.Select(e => e.ToMediaItem());
     }
 
-    public async Task<IEnumerable<MediaItem>> GetByImdbid(string imdbid, int? limit = null)
+    public async Task<IEnumerable<MediaItem>> GetByImdbId(string imdbid, int? limit = null)
     {
         IQueryable<MediaItemEntity> queryable = _context.MediaItems
             .Where(e => e.ImdbId.Contains(imdbid))
@@ -97,6 +97,7 @@ public class MediaItemRepository : IMediaItemRepository
             existing.LanguagesJson = JsonSerializer.Serialize(item.Languages ?? new List<MediaLanguage>());
             existing.Type = (int)item.Type;
             existing.ImdbId = item.ImdbId;
+            existing.TmdbId = item.TmdbId;
             existing.Description = item.Description;
             existing.Seeders = item.Seeders;
             existing.Leechers = item.Leechers;

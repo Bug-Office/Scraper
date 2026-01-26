@@ -45,6 +45,9 @@ public class MediaItemEntity
     [MaxLength(50)]
     public string? ImdbId { get; set; }
 
+    [MaxLength(50)]
+    public string? TmdbId { get; set; }
+
     [Required]
     [MaxLength(100)]
     public string Guid { get; set; } = System.Guid.NewGuid().ToString();

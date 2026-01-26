@@ -69,6 +69,10 @@ public class TitleNormalizer : ITitleNormalizer
         // Normalize spaces
         normalizedTitle = Regex.Replace(normalizedTitle, @"\s{2,}", " ").Trim();
 
+        // Normalize
+        normalizedTitle = Regex.Replace(normalizedTitle, @" - ", ": ").Trim();
+        normalizedTitle = Regex.Replace(normalizedTitle, @"- ", ": ").Trim();
+
         // Capitalize (pt-BR)
         normalizedTitle = CultureInfo
             .GetCultureInfo("pt-BR")
