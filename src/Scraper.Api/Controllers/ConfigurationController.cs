@@ -129,7 +129,7 @@ public class ConfigurationController : ControllerBase
     }
 
     [HttpPost("scraper/{scraperName}")]
-    public async Task<IActionResult> SaveScraperConfiguration(string scraperName, [FromBody] Scraper.Infrastructure.Configurations.ScraperConfiguration? configuration)
+    public async Task<IActionResult> SaveScraperConfiguration(string scraperName, [FromBody] Infrastructure.Configurations.ScraperConfiguration? configuration)
     {
         try
         {

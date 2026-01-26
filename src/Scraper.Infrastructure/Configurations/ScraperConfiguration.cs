@@ -12,6 +12,11 @@ public class ScraperConfiguration
     /// XPath selectors for finding result items on search page
     /// </summary>
     public List<string> ResultItemSelectors { get; set; } = new();
+
+    /// <summary>
+    /// XPath selector for finding title in result item
+    /// </summary>
+    public List<string> TitleSelectors { get; set; } = new();
     
     /// <summary>
     /// XPath selector for finding title link in result item

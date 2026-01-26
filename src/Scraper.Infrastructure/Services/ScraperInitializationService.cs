@@ -122,6 +122,7 @@ public class ScraperInitializationService
             BaseUrl = config.BaseUrl ?? string.Empty,
             SearchUrlTemplate = config.SearchUrlTemplate ?? "{BaseUrl}/search?q={Query}",
             ResultItemSelectors = config.ResultItemSelectors ?? new List<string>(),
+            TitleSelectors = config.TitleSelectors ?? new List<string>(),
             TitleLinkSelectors = config.TitleLinkSelectors ?? new List<string>(),
             DownloadSectionSelectors = config.DownloadSectionSelectors ?? new List<string>(),
             EpisodeParagraphSelectors = config.EpisodeParagraphSelectors ?? new List<string>(),
@@ -155,6 +156,7 @@ public class ScraperInitializationService
         public string? BaseUrl { get; set; }
         public string? SearchUrlTemplate { get; set; }
         public List<string>? ResultItemSelectors { get; set; }
+        public List<string>? TitleSelectors { get; set; }
         public List<string>? TitleLinkSelectors { get; set; }
         public List<string>? DownloadSectionSelectors { get; set; }
         public List<string>? EpisodeParagraphSelectors { get; set; }

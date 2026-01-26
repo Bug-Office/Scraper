@@ -13,6 +13,9 @@
           "//div[contains(@class, 'item')]",
           "//div[contains(@class, 'torrent')]"
         ],
+        "titleSelectors": [
+          ".//h2"
+        ],
         "titleLinkSelectors": [
           ".//h2//a",
           ".//h2/a",
@@ -53,6 +56,9 @@
           "//div[contains(@class, 'item')]",
           "//div[contains(@class, 'torrent')]"
         ],
+        "titleSelectors": [
+          ".//h2"
+        ],
         "titleLinkSelectors": [
           ".//h2//a",
           ".//h2/a",
@@ -91,6 +97,9 @@
       "resultItemSelectors": [
         "//article",
         "//div[@class='item']"
+      ],
+      "titleSelectors": [
+        ".//h2"
       ],
       "titleLinkSelectors": [
         ".//h2//a",

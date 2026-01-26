@@ -154,6 +154,19 @@ public class ScraperConfigurationService
             }
         }
 
+        if (settings.TryGetValue("titleSelectors", out var titleSelectorsJson) && !string.IsNullOrEmpty(titleSelectorsJson))
+        {
+            try
+            {
+                config.TitleSelectors = JsonSerializer.Deserialize<List<string>>(titleSelectorsJson, JsonOptions) ?? new List<string>();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to deserialize titleSelectors for {ScraperName}", scraperName);
+                config.TitleSelectors = new List<string>();
+            }
+        }
+
         if (settings.TryGetValue("titleLinkSelectors", out var titleLinkSelectorsJson) && !string.IsNullOrEmpty(titleLinkSelectorsJson))
         {
             try
@@ -235,6 +248,7 @@ public class ScraperConfigurationService
             ["baseUrl"] = configuration.BaseUrl ?? string.Empty,
             ["searchUrlTemplate"] = configuration.SearchUrlTemplate ?? string.Empty,
             ["resultItemSelectors"] = JsonSerializer.Serialize(configuration.ResultItemSelectors ?? new List<string>(), JsonOptions),
+            ["titleSelectors"] = JsonSerializer.Serialize(configuration.TitleSelectors ?? new List<string>(), JsonOptions),
             ["titleLinkSelectors"] = JsonSerializer.Serialize(configuration.TitleLinkSelectors ?? new List<string>(), JsonOptions),
             ["downloadSectionSelectors"] = JsonSerializer.Serialize(configuration.DownloadSectionSelectors ?? new List<string>(), JsonOptions),
             ["episodeParagraphSelectors"] = JsonSerializer.Serialize(configuration.EpisodeParagraphSelectors ?? new List<string>(), JsonOptions),
@@ -265,6 +279,7 @@ public class ScraperConfigurationService
             BaseUrl = string.Empty,
             SearchUrlTemplate = "{BaseUrl}/search?q={Query}",
             ResultItemSelectors = new List<string> { "//article", "//div[@class='item']" },
+            TitleSelectors = new List<string> { ".//h2", ".//p" },
             TitleLinkSelectors = new List<string> { ".//h2//a", ".//a" },
             DownloadSectionSelectors = new List<string> { "//div[@id='download']" },
             EpisodeParagraphSelectors = new List<string> { ".//p[contains(., 'EPISÓDIO')]" },
@@ -352,6 +367,7 @@ public class ScraperConfigurationService
             BaseUrl = config.BaseUrl ?? string.Empty,
             SearchUrlTemplate = config.SearchUrlTemplate ?? "{BaseUrl}/search?q={Query}",
             ResultItemSelectors = config.ResultItemSelectors ?? new List<string>(),
+            TitleSelectors = config.TitleSelectors ?? new List<string>(),
             TitleLinkSelectors = config.TitleLinkSelectors ?? new List<string>(),
             DownloadSectionSelectors = config.DownloadSectionSelectors ?? new List<string>(),
             EpisodeParagraphSelectors = config.EpisodeParagraphSelectors ?? new List<string>(),
@@ -377,6 +393,7 @@ public class ScraperConfigurationService
         public string? BaseUrl { get; set; }
         public string? SearchUrlTemplate { get; set; }
         public List<string>? ResultItemSelectors { get; set; }
+        public List<string>? TitleSelectors { get; set; }
         public List<string>? TitleLinkSelectors { get; set; }
         public List<string>? DownloadSectionSelectors { get; set; }
         public List<string>? EpisodeParagraphSelectors { get; set; }

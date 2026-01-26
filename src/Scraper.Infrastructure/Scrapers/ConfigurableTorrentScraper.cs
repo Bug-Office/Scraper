@@ -253,7 +253,7 @@ public class ConfigurableTorrentScraper : BaseScraper
                 return Enumerable.Empty<MediaItem>();
             }
 
-            var titleText = ExtractTitle(detailLinkNode, node);
+            var titleText = ExtractTitle(node);
             if (string.IsNullOrWhiteSpace(titleText))
             {
                 return Enumerable.Empty<MediaItem>();
@@ -375,25 +375,29 @@ public class ConfigurableTorrentScraper : BaseScraper
         return node.SelectSingleNode(".//a") ?? (node.Name == "a" ? node : null);
     }
 
-    private string ExtractTitle(HtmlNode detailLinkNode, HtmlNode node)
+    private string ExtractTitle(HtmlNode node)
     {
-        var titleText = detailLinkNode.InnerText.Trim();
-        
-        if (string.IsNullOrWhiteSpace(titleText))
+        foreach (var selector in _configuration.TitleSelectors)
         {
-            var h2Node = node.SelectSingleNode(".//h2");
-            if (h2Node != null)
-            {
-                titleText = h2Node.InnerText.Trim();
-            }
+            var titleNode = node.SelectSingleNode(selector);
+            if (titleNode != null)
+                return  titleNode.InnerText.Trim();
         }
 
-        // Clean title - remove HTML entities, <br> tags, and extra whitespace
-        titleText = System.Net.WebUtility.HtmlDecode(titleText);
-        titleText = Regex.Replace(titleText, @"<br\s*/?>", " ", RegexOptions.IgnoreCase);
-        titleText = Regex.Replace(titleText, @"\s+", " ").Trim();
 
-        return titleText;
+        // Fallback: try any link
+        var fallbackTitleNode = node.SelectSingleNode(".//a") ?? (node.Name == "a" ? node : null);
+        var titleText = fallbackTitleNode?.InnerText.Trim();
+
+        if (string.IsNullOrWhiteSpace(titleText))
+            return string.Empty;
+
+        // Clean title - remove HTML entities, <br> tags, and extra whitespace
+        titleText = System.Net.WebUtility.HtmlDecode(titleText!);
+        titleText = Regex.Replace(titleText!, @"<br\s*/?>", " ", RegexOptions.IgnoreCase);
+        titleText = Regex.Replace(titleText!, @"\s+", " ").Trim();
+
+        return titleText!;
     }
 
     private string ExtractDetailLink(HtmlNode detailLinkNode, HtmlNode node)
