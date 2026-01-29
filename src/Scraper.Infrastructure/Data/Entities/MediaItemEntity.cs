@@ -29,7 +29,7 @@ public class MediaItemEntity
 
     public long FileSize { get; set; }
 
-    public DateTime PublishDate { get; set; }
+    public DateTime ReleaseDate { get; set; }
 
     [MaxLength(50)]
     public string Resolution { get; set; } = string.Empty;
@@ -80,7 +80,7 @@ public class MediaItemEntity
             MagnetLink = item.MagnetLink,
             TorrentLink = item.TorrentLink,
             FileSize = item.FileSize,
-            PublishDate = item.PublishDate,
+            ReleaseDate = item.ReleaseDate,
             Resolution = item.Resolution,
             Format = item.Format,
             LanguagesJson = JsonSerializer.Serialize(item.Languages ?? new List<MediaLanguage>(), JsonOptions),
@@ -105,7 +105,7 @@ public class MediaItemEntity
             MagnetLink = MagnetLink,
             TorrentLink = TorrentLink,
             FileSize = FileSize,
-            PublishDate = PublishDate,
+            ReleaseDate = ReleaseDate,
             Resolution = Resolution,
             Format = Format,
             Languages = DeserializeLanguages(LanguagesJson),

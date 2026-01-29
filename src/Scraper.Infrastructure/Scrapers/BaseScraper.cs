@@ -1,11 +1,8 @@
 using HtmlAgilityPack;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Scraper.Core.Interfaces;
 using Scraper.Core.Models;
 using Scraper.Infrastructure.Interfaces;
-using Scraper.Infrastructure.Services;
-using System.Globalization;
 
 namespace Scraper.Infrastructure.Scrapers;
 
@@ -113,10 +110,10 @@ public abstract class BaseScraper : IScraper
         string pageUrl,
         string link,
         long? size = null,
-        DateTime? publishDate = null,
+        DateTime? ReleaseDate = null,
         MediaType type = MediaType.Unknown)
     {
-        var normalizedTitle = TitleNormalizer.NormalizeTitle(title, type);
+        var normalizedTitle = TitleNormalizer.NormalizeTitle(title);
 
         var item = new MediaItem
         {
@@ -124,7 +121,7 @@ public abstract class BaseScraper : IScraper
             PageUrl = pageUrl,
             NormalizedTitle = normalizedTitle,
             Type = type,
-            PublishDate = publishDate ?? DateTime.UtcNow,
+            ReleaseDate = ReleaseDate ?? DateTime.UtcNow,
             Guid = Guid.NewGuid().ToString(),
             Scraper = Name
         };
@@ -151,11 +148,11 @@ public abstract class BaseScraper : IScraper
     {
         item.NormalizedTitle = TitleNormalizer.NormalizeTitle(item);
 
-        var tmdbmovieDetails = TmdbService.GetTmdbMovieDetailsByTitleAsync(item.NormalizedTitle).GetAwaiter().GetResult();
+        var tmdbmovieDetails = TmdbService.GetTmdbDetailsByTitleAsync(item.NormalizedTitle, item.ReleaseDate.Year, item.Type).GetAwaiter().GetResult();
 
         item.Title = tmdbmovieDetails?.Title ?? item.Title;
         item.NormalizedTitle = tmdbmovieDetails?.Title ?? item.NormalizedTitle;
-        item.PublishDate = tmdbmovieDetails?.ReleaseDate ?? item.PublishDate;
+        item.ReleaseDate = tmdbmovieDetails?.ReleaseDate ?? item.ReleaseDate;
         item.ImdbId = tmdbmovieDetails?.ImdbId.Split("tt").ElementAt(1);
         item.TmdbId = tmdbmovieDetails?.Id.ToString();
     }

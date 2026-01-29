@@ -9,23 +9,72 @@ namespace Scraper.Infrastructure.Parsers;
 /// <summary>
 /// Base implementation of IDetailPageParser
 /// </summary>
-public abstract class BaseDetailPageParser : IDetailPageParser
+public class BaseDetailPageParser : IDetailPageParser
 {
-    protected readonly ILogger Logger;
-    protected readonly IMetadataExtractor MetadataExtractor;
-    protected readonly ScraperConfiguration Configuration;
+    private readonly ILogger Logger;
+    private readonly ScraperConfiguration Configuration;
+    private readonly IMetadataExtractor MetadataExtractor;
 
-    protected BaseDetailPageParser(
+    public BaseDetailPageParser(
         ILogger logger,
-        IMetadataExtractor metadataExtractor,
-        ScraperConfiguration configuration)
+        ScraperConfiguration configuration,
+        IMetadataExtractor metadataExtractor
+    )
     {
         Logger = logger;
-        MetadataExtractor = metadataExtractor;
         Configuration = configuration;
+        MetadataExtractor = metadataExtractor;
     }
 
-    public abstract Task EnrichMediaItemAsync(MediaItem item, string detailUrl, string html, CancellationToken cancellationToken = default);
+    public void EnrichMediaItem(MediaItem item, string detailUrl, string html, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            Logger.LogDebug("Enriching item from detail page: {Url}", detailUrl);
+
+            var doc = new HtmlDocument();
+            doc.LoadHtml(html);
+
+            var infoSection = GetInfoSection(doc);
+            var infoBlock = ExtractInfoBlock(infoSection);
+
+            // Extract size
+            var sizeText = MetadataExtractor.ExtractSize(infoBlock.GetValueOrDefault("Tamanho"));
+            if (!string.IsNullOrEmpty(sizeText))
+            {
+                var size = ParseFileSize(sizeText);
+                if (size > 0)
+                {
+                    item.FileSize = size;
+                }
+            }
+
+            // Extract format
+            var format = MetadataExtractor.ExtractFormat(infoBlock.GetValueOrDefault("Formato"));
+            if (!string.IsNullOrEmpty(format))
+            {
+                item.Format = format;
+            }
+
+            // Extract quality/resolution
+            var quality = MetadataExtractor.ExtractQuality(infoBlock.GetValueOrDefault("Qualidade"));
+            if (!string.IsNullOrEmpty(quality))
+            {
+                item.Resolution = quality;
+            }
+
+            // Extract languages
+            var languages = MetadataExtractor.ExtractLanguages(infoBlock.GetValueOrDefault("Idioma"));
+            if (languages.Any())
+            {
+                item.Languages = languages;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error enriching item from detail page {Url}", detailUrl);
+        }
+    }
 
     public virtual long ParseFileSize(string? sizeText)
     {
@@ -95,7 +144,7 @@ public abstract class BaseDetailPageParser : IDetailPageParser
         return DateTime.UtcNow;
     }
 
-    protected virtual HtmlNode? GetInfoSection(HtmlDocument doc)
+    public virtual HtmlNode? GetInfoSection(HtmlDocument doc)
     {
         foreach (var selector in Configuration.InfoSectionSelectors)
         {
@@ -106,7 +155,7 @@ public abstract class BaseDetailPageParser : IDetailPageParser
         return doc.DocumentNode;
     }
 
-    protected Dictionary<string, string> ExtractInfoBlock(HtmlNode pNode)
+    private Dictionary<string, string> ExtractInfoBlock(HtmlNode pNode)
     {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 

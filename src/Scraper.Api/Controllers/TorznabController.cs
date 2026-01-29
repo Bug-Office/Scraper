@@ -32,7 +32,7 @@ public class TorznabController : ControllerBase
         [FromQuery] string? apikey, [FromQuery] string? cat, [FromQuery] string? extended,
         [FromQuery] string? offset, [FromQuery] string? limit, [FromQuery] string? skipDatabase)
     {
-        var tLower = (t ?? string.Empty).ToLowerInvariant();
+        var typeLower = (t ?? string.Empty).ToLowerInvariant();
         var qValue = q ?? string.Empty;
         var imdbId = imdbid ?? string.Empty;
         var seasonValue = season ?? string.Empty;
@@ -56,7 +56,7 @@ public class TorznabController : ControllerBase
         }
 
         // Handle caps endpoint (capabilities)
-        if (tLower == "caps")
+        if (typeLower == "caps")
         {
             return Content(GetCapsXml(), "application/xml");
         }
@@ -84,11 +84,11 @@ public class TorznabController : ControllerBase
 
         // Determine media type
         MediaType? mediaType = null;
-        if (tLower == "movie" || !string.IsNullOrEmpty(imdbId))
+        if (typeLower == "movie" || !string.IsNullOrEmpty(imdbId))
         {
             mediaType = MediaType.Movie;
         }
-        else if (tLower == "tvsearch")
+        else if (typeLower == "tvsearch")
         {
             mediaType = MediaType.TvShow;
         }

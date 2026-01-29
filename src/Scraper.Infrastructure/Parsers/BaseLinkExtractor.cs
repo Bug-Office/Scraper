@@ -5,7 +5,7 @@ namespace Scraper.Infrastructure.Parsers;
 /// <summary>
 /// Base implementation of ILinkExtractor with common link extraction patterns
 /// </summary>
-public abstract class BaseLinkExtractor : ILinkExtractor
+public class BaseLinkExtractor : ILinkExtractor
 {
     public virtual string? ExtractLink(HtmlNode node, string baseUrl)
     {

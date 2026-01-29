@@ -82,7 +82,7 @@ public class TorznabService
 
     //        Link = magnet,
 
-    //        PubDate = item.PublishDate.ToUniversalTime()
+    //        PubDate = item.ReleaseDate.ToUniversalTime()
     //            .ToString("ddd, dd MMM yyyy HH:mm:ss 'GMT'", CultureInfo.InvariantCulture),
 
     //        Description = item.Description ?? item.Title,
@@ -127,14 +127,14 @@ public class TorznabService
 
             Comments = item.PageUrl,
 
-            PubDate = item.PublishDate.ToUniversalTime()
+            PubDate = item.ReleaseDate.ToUniversalTime()
                 .ToString("ddd, dd MMM yyyy HH:mm:ss 'GMT'", CultureInfo.InvariantCulture),
 
             Description = item.Description ?? item.Title,
 
             Size = fileSize,
 
-            Categories = new() { "2000" },
+            Categories = new() { item.Type == MediaType.Movie ? "2000" : "5000" },
 
             Enclosure = new TorznabEnclosure
             {

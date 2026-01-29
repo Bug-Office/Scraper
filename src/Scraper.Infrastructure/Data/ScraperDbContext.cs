@@ -24,7 +24,7 @@ public class ScraperDbContext : DbContext
             entity.HasIndex(e => e.Title);
             entity.HasIndex(e => e.NormalizedTitle);
             entity.HasIndex(e => e.ImdbId);
-            entity.HasIndex(e => e.PublishDate);
+            entity.HasIndex(e => e.ReleaseDate);
             entity.HasIndex(e => e.CreatedAt);
         });
 

@@ -11,4 +11,8 @@ public interface IMetadataExtractor
     string? ExtractFormat(string? text);
     string? ExtractQuality(string? text);
     List<MediaLanguage> ExtractLanguages(string? text);
+    string? ExtractEpisodeNumber(string text);
+    (string? Season, string? Episode) ExtractSeasonEpisodeFromMagnet(string magnet);
+    string? ExtractDateFromText(string text);
+    string ExtractSeasonFromTitle(string seriesTitle);
 }

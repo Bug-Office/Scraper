@@ -6,8 +6,8 @@ using Scraper.Infrastructure.Configurations;
 using Scraper.Infrastructure.Http;
 using Scraper.Infrastructure.Interfaces;
 using Scraper.Infrastructure.Parsers;
-using Scraper.Infrastructure.Parsers.GenericTorrent;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace Scraper.Infrastructure.Scrapers;
 
@@ -46,18 +46,18 @@ public class ConfigurableTorrentScraper : BaseScraper
     {
         _scraperName = scraperName;
         _configuration = configuration;
-        _metadataExtractor = new GenericTorrentMetadataExtractor();
-        _linkExtractor = new GenericTorrentLinkExtractor();
-        _episodeExtractor = new GenericTorrentEpisodeExtractor(
-            loggerFactory.CreateLogger<GenericTorrentEpisodeExtractor>(),
-            titleNormalizer,
+        _metadataExtractor = new BaseMetadataExtractor();
+        _linkExtractor = new BaseLinkExtractor();
+        _episodeExtractor = new BaseEpisodeExtractor(
+            loggerFactory.CreateLogger<BaseEpisodeExtractor>(),
+            _configuration,
+            _metadataExtractor,
             tmdbService,
-            _metadataExtractor,
-            _linkExtractor);
-        _detailPageParser = new GenericTorrentDetailPageParser(
-            loggerFactory.CreateLogger<GenericTorrentDetailPageParser>(),
-            _metadataExtractor,
-            _configuration);
+            titleNormalizer);
+        _detailPageParser = new BaseDetailPageParser(
+            loggerFactory.CreateLogger<BaseDetailPageParser>(),
+            _configuration,
+            _metadataExtractor);
     }
 
     public override string Name => _scraperName;
@@ -83,6 +83,9 @@ public class ConfigurableTorrentScraper : BaseScraper
 
         try
         {
+            var tmdbmovieDetails = TmdbService.GetTmdbDetailsByTitleAsync(request.Query, null, request.Type).GetAwaiter().GetResult();
+            request.Query = tmdbmovieDetails?.Name ?? request.Query;
+
             var results = await SearchByQueryAsync(request, cancellationToken = default);
             return results;
         }
@@ -106,8 +109,8 @@ public class ConfigurableTorrentScraper : BaseScraper
                     return results;
                 }
 
-                var tmdbmovieDetails = TmdbService.GetTmdbMovieDetailsByExternalSource(request.ImdbId, "imdb_id").GetAwaiter().GetResult();
-                request.Query = tmdbmovieDetails.Title;
+                var tmdbmovieDetails = TmdbService.GetTmdbMovieDetailsByExternalSourceAsync(request.ImdbId, "imdb_id").GetAwaiter().GetResult();
+                request.Query = tmdbmovieDetails?.Title;
 
                 results = await SearchByQueryAsync(request, cancellationToken);
                 return results;
@@ -154,7 +157,7 @@ public class ConfigurableTorrentScraper : BaseScraper
             {
                 try
                 {
-                    var items = await ParseTorrentItemAsync(node, cancellationToken, saveToDatabase: false, checkDatabase: false);
+                    var items = await ParseTorrentItemAsync(node, cancellationToken);
                     return items;
                 }
                 catch (Exception ex)
@@ -243,7 +246,7 @@ public class ConfigurableTorrentScraper : BaseScraper
         return Enumerable.Empty<HtmlNode>();
     }
 
-    private async Task<IEnumerable<MediaItem>> ParseTorrentItemAsync(HtmlNode node, CancellationToken cancellationToken, bool saveToDatabase = true, bool checkDatabase = true)
+    private async Task<IEnumerable<MediaItem>> ParseTorrentItemAsync(HtmlNode node, CancellationToken cancellationToken, bool skipDatabase = false)
     {
         try
         {
@@ -267,8 +270,8 @@ public class ConfigurableTorrentScraper : BaseScraper
             var mediaType = DetermineMediaType(titleText, node.InnerText);
             titleText = CleanTitle(titleText);
 
-            // Check if already exists in database (only if checkDatabase is true)
-            if (checkDatabase && MediaItemRepository != null)
+            // Check if already exists in database (only if skipDatabase is false)
+            if (!skipDatabase && MediaItemRepository != null)
             {
                 var existingItems = await MediaItemRepository.GetByPageUrlAsync(detailLink);
                 if (existingItems.Any())
@@ -279,87 +282,102 @@ public class ConfigurableTorrentScraper : BaseScraper
             }
 
             // For TV series, check if detail page has multiple episodes
-            if (mediaType == MediaType.TvShow && !string.IsNullOrEmpty(detailLink))
-            {
-                try
-                {
-                    IEnumerable<MediaItem> episodes = Enumerable.Empty<MediaItem>();
-                    
-                    if (checkDatabase && MediaItemRepository != null)
-                    {
-                        episodes = await MediaItemRepository.GetByPageUrlAsync(detailLink);
-                    }
+            if (mediaType == MediaType.TvShow)
+                return await CreateEpisodeMediaItem(titleText, detailLink);
 
-                    if (!episodes.Any())
-                    {
-                        var html = await FetchHtmlAsync(detailLink, cancellationToken);
-                        episodes = await _episodeExtractor.ExtractEpisodesAsync(detailLink, titleText, html, cancellationToken);
-                        
-                        // Don't save here if saveToDatabase is false - will be saved in batch
-                        if (saveToDatabase && MediaItemRepository != null && episodes.Any())
-                        {
-                            await MediaItemRepository.SaveRangeAsync(episodes);
-                        }
-                    }
+            if (mediaType == MediaType.Movie)
+                return await CreateMovieMediaItem(
+                    cancellationToken,
+                    titleText,
+                    detailLink,
+                    link ?? detailLink,
+                    size: _detailPageParser.ParseFileSize(sizeText),
+                    ReleaseDate: _detailPageParser.ParseDate(dateText),
+                    type: mediaType);
 
-                    if (episodes.Any())
-                    {
-                        Logger.LogDebug("Found {Count} episodes for series {Title}", episodes.Count(), titleText);
-                        return episodes;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogWarning(ex, "Error extracting episodes from detail page, falling back to single item");
-                }
-            }
-
-            // Single item (movie or single episode)
-            var item = CreateMediaItem(
-                titleText,
-                detailLink,
-                link ?? detailLink,
-                _detailPageParser.ParseFileSize(sizeText),
-                _detailPageParser.ParseDate(dateText),
-                mediaType
-            );
-
-            // Enrich with detail page information
-            if (!string.IsNullOrEmpty(detailLink))
-            {
-                try
-                {
-                    var html = await FetchHtmlAsync(detailLink, cancellationToken);
-                    await _detailPageParser.EnrichMediaItemAsync(item, detailLink, html, cancellationToken);
-                    NormalizeMediaItem(item);
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogWarning(ex, "Failed to enrich item from detail page {Url}", detailLink);
-                }
-            }
-
-            // Save to database only if saveToDatabase is true
-            if (saveToDatabase && MediaItemRepository != null)
-            {
-                try
-                {
-                    await MediaItemRepository.SaveAsync(item);
-                    Logger.LogDebug("Saved item to database: {Title}", item.Title);
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogWarning(ex, "Failed to save item to database: {Title}", item.Title);
-                }
-            }
-
-            return new[] { item };
+            return Enumerable.Empty<MediaItem>();
         }
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "Error parsing torrent item node from {ScraperName}", Name);
             return Enumerable.Empty<MediaItem>();
         }
+    }
+
+    private async Task<IEnumerable<MediaItem>> CreateMovieMediaItem(
+        CancellationToken cancellationToken,
+        string title,
+        string pageUrl,
+        string link,
+        long? size = null,
+        DateTime? ReleaseDate = null,
+        MediaType type = MediaType.Unknown
+    )
+    {
+        // Single item (movie or single episode)
+        var item = CreateMediaItem(title, pageUrl, link, size, ReleaseDate, type);
+
+        // Enrich with detail page information
+        if (!string.IsNullOrEmpty(pageUrl))
+        {
+            try
+            {
+                var html = await FetchHtmlAsync(pageUrl, cancellationToken);
+                _detailPageParser.EnrichMediaItem(item, pageUrl, html, cancellationToken);
+                NormalizeMediaItem(item);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Failed to enrich item from detail page {Url}", pageUrl);
+            }
+        }
+
+        try
+        {
+            await MediaItemRepository.SaveAsync(item);
+            Logger.LogDebug("Saved item to database: {Title}", item.Title);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to save item to database: {Title}", item.Title);
+        }
+
+        return [item];
+    }
+
+    private async Task<IEnumerable<MediaItem>> CreateEpisodeMediaItem(
+        string title,
+        string pageUrl,
+        CancellationToken cancellationToken = default
+    )
+    {
+        try
+        {
+            IEnumerable<MediaItem> episodes = Enumerable.Empty<MediaItem>();
+
+            if (!episodes.Any())
+            {
+                var html = await FetchHtmlAsync(pageUrl, cancellationToken);
+                episodes = await _episodeExtractor.ExtractEpisodesAsync(pageUrl, title, html, cancellationToken);
+
+                if (MediaItemRepository != null && episodes.Any())
+                {
+                    await MediaItemRepository.SaveRangeAsync(episodes);
+                }
+            }
+
+            if (episodes.Any())
+            {
+                Logger.LogDebug("Found {Count} episodes for series {Title}", episodes.Count(), title);
+                return episodes;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error extracting episodes from detail page, falling back to single item");
+        }
+
+        return Enumerable.Empty<MediaItem>();
     }
 
     private HtmlNode? FindTitleLink(HtmlNode node)

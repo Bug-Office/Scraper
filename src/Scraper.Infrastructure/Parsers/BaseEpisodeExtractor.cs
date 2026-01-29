@@ -2,7 +2,8 @@ using HtmlAgilityPack;
 using Microsoft.Extensions.Logging;
 using Scraper.Core.Interfaces;
 using Scraper.Core.Models;
-using Scraper.Infrastructure.Interfaces;
+using Scraper.Infrastructure.Configurations;
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace Scraper.Infrastructure.Parsers;
@@ -10,88 +11,133 @@ namespace Scraper.Infrastructure.Parsers;
 /// <summary>
 /// Base implementation of IEpisodeExtractor with common episode extraction patterns
 /// </summary>
-public abstract class BaseEpisodeExtractor : IEpisodeExtractor
+public class BaseEpisodeExtractor : IEpisodeExtractor
 {
-    protected readonly ILogger Logger;
-    protected readonly ITitleNormalizer TitleNormalizer;
-    protected readonly ITmdbService TmdbService;
-    protected readonly IMetadataExtractor MetadataExtractor;
-    protected readonly ILinkExtractor LinkExtractor;
-    
-    protected static readonly Regex EpisodeNumberPattern = new(@"(\d{1,2})[º°]\s*EPIS[ÓO]DIO", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    protected static readonly Regex SeasonEpisodePattern = new(@"S(\d{1,2})E(\d{1,2})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    protected static readonly Regex SeasonPattern = new(@"(\d{1,2})[ªa]\s*Temporada", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private readonly ILogger Logger;
+    private readonly ScraperConfiguration Configuration;
+    private readonly ITmdbService TmdbService;
+    private readonly IMetadataExtractor MetadataExtractor;
+    private readonly ITitleNormalizer TitleNormalizer;
 
-    protected BaseEpisodeExtractor(
+
+    public BaseEpisodeExtractor(
         ILogger logger,
-        ITitleNormalizer titleNormalizer,
-        ITmdbService tmdbService,
+        ScraperConfiguration configuration,
         IMetadataExtractor metadataExtractor,
-        ILinkExtractor linkExtractor)
+        ITmdbService tmdbService,
+        ITitleNormalizer titleNormalizer
+    )
     {
         Logger = logger;
-        TitleNormalizer = titleNormalizer;
-        TmdbService = tmdbService;
+        Configuration = configuration;
         MetadataExtractor = metadataExtractor;
-        LinkExtractor = linkExtractor;
+        TmdbService = tmdbService;
+        TitleNormalizer = titleNormalizer;
     }
 
-    public abstract Task<IEnumerable<MediaItem>> ExtractEpisodesAsync(
-        string detailUrl, 
-        string seriesTitle, 
-        string html, 
-        CancellationToken cancellationToken = default);
-
-    protected virtual HtmlNode? GetDownloadSection(HtmlDocument doc)
+    public async Task<IEnumerable<MediaItem>> ExtractEpisodesAsync(
+            string detailUrl,
+            string seriesTitle,
+            string html,
+            CancellationToken cancellationToken = default)
     {
-        return doc.DocumentNode.SelectSingleNode("//div[@id='download']")
-            ?? doc.DocumentNode.SelectSingleNode("//div[@id='lista_links']")
-            ?? doc.DocumentNode;
-    }
-
-    protected virtual IEnumerable<HtmlNode> GetEpisodeParagraphs(HtmlNode downloadSection)
-    {
-        return downloadSection.SelectNodes(".//p[@class='text-center']")
-            ?? downloadSection.SelectNodes(".//p[contains(., 'EPISÓDIO')]")
-            ?? Enumerable.Empty<HtmlNode>();
-    }
-
-    protected virtual string? ExtractEpisodeNumber(string text)
-    {
-        var match = EpisodeNumberPattern.Match(text);
-        return match.Success ? match.Groups[1].Value : null;
-    }
-
-    protected virtual (string? Season, string? Episode) ExtractSeasonEpisodeFromMagnet(string magnet)
-    {
-        var match = SeasonEpisodePattern.Match(magnet);
-        if (match.Success)
+        try
         {
-            return (match.Groups[1].Value, match.Groups[2].Value);
+            Logger.LogDebug("Extracting episodes from detail page: {Url}", detailUrl);
+
+            var doc = new HtmlDocument();
+            doc.LoadHtml(html);
+
+            var episodes = new List<MediaItem>();
+            var downloadSection = GetDownloadSection(doc);
+            var episodeParagraphs = GetEpisodeParagraphs(downloadSection);
+
+            foreach (var paragraph in episodeParagraphs)
+            {
+                try
+                {
+                    // Find magnet link in this paragraph
+                    var episodeLink = paragraph.SelectSingleNode(".//a[contains(@href, 'magnet:')]");
+                    if (episodeLink == null)
+                        continue;
+
+                    var magnet = episodeLink.GetAttributeValue("href", "");
+                    if (string.IsNullOrEmpty(magnet))
+                        continue;
+
+                    var episodeText = paragraph.FirstChild.InnerText;
+
+                    // Extract season/episode number from magnet link
+                    var (seasonNumber, episodeNumber) = MetadataExtractor.ExtractSeasonEpisodeFromMagnet(magnet);
+
+                    // Extract season number from series title if not found
+                    if (string.IsNullOrEmpty(seasonNumber))
+                    {
+                        seasonNumber = MetadataExtractor.ExtractSeasonFromTitle(seriesTitle);
+                    }
+
+                    // Extract episode number from series title if not found
+                    if (string.IsNullOrEmpty(seasonNumber))
+                    {
+                        episodeNumber = MetadataExtractor.ExtractEpisodeNumber(episodeText);
+                    }
+
+                    // Build episode title
+                    var episodeTitle = BuildEpisodeTitle(seriesTitle, seasonNumber, episodeNumber);
+
+                    if (string.IsNullOrEmpty(episodeNumber))
+                    {
+                        Logger.LogWarning("Could not determine episode number for magnet link in {Url}", detailUrl);
+                    }
+
+                    // Extract metadata
+                    var dateText = MetadataExtractor.ExtractDateFromText(doc.DocumentNode.InnerText);
+                    var sizeText = MetadataExtractor.ExtractSize(episodeText);
+
+                    var episode = CreateEpisodeItem(
+                        episodeTitle,
+                        detailUrl,
+                        magnet,
+                        sizeText,
+                        dateText,
+                        MediaType.TvShow
+                    );
+
+                    EnrichMediaItemAsync(episode, detailUrl, html, cancellationToken);
+
+                    NormalizeMediaItem(episode);
+
+                    episodes.Add(episode);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "Error parsing episode from detail page");
+                }
+            }
+
+            return episodes;
         }
-        return (null, null);
-    }
-
-    protected virtual string ExtractSeasonFromTitle(string seriesTitle)
-    {
-        var match = SeasonPattern.Match(seriesTitle);
-        return match.Success ? match.Groups[1].Value : "1";
-    }
-
-    protected virtual string BuildEpisodeTitle(string seriesTitle, string? seasonNumber, string? episodeNumber)
-    {
-        var cleanSeriesTitle = Regex.Replace(seriesTitle, @"\s*\d+[ªa]\s*Temporada\s*", " ", RegexOptions.IgnoreCase).Trim();
-        cleanSeriesTitle = Regex.Replace(cleanSeriesTitle, @"\s*Torrent\s*Download\s*$", "", RegexOptions.IgnoreCase).Trim();
-        
-        if (!string.IsNullOrEmpty(episodeNumber))
+        catch (Exception ex)
         {
-            return $"{cleanSeriesTitle} S{seasonNumber?.PadLeft(2, '0') ?? "01"}E{episodeNumber.PadLeft(2, '0')}";
+            Logger.LogWarning(ex, "Error extracting episodes from detail page {Url}", detailUrl);
+            return Enumerable.Empty<MediaItem>();
         }
-        
-        return $"{cleanSeriesTitle} Episode";
     }
 
-    protected virtual MediaItem CreateEpisodeItem(
+    protected virtual void NormalizeMediaItem(MediaItem item)
+    {
+        item.NormalizedTitle = TitleNormalizer.NormalizeTitle(item);
+
+        var tmdbmovieDetails = TmdbService.GetTmdbDetailsByTitleAsync(item.Title, item.ReleaseDate.Year, item.Type).GetAwaiter().GetResult();
+
+        item.Title = tmdbmovieDetails?.Title ?? item.Title;
+        item.NormalizedTitle = tmdbmovieDetails?.Title ?? item.NormalizedTitle;
+        item.ReleaseDate = tmdbmovieDetails?.ReleaseDate ?? item.ReleaseDate;
+        item.ImdbId = tmdbmovieDetails?.ImdbId.Split("tt").ElementAt(1);
+        item.TmdbId = tmdbmovieDetails?.Id.ToString();
+    }
+
+    public virtual MediaItem CreateEpisodeItem(
         string episodeTitle,
         string detailUrl,
         string link,
@@ -99,11 +145,11 @@ public abstract class BaseEpisodeExtractor : IEpisodeExtractor
         string? dateText,
         MediaType type)
     {
-        var normalizedTitle = TitleNormalizer.NormalizeTitle(episodeTitle, type);
+        var normalizedTitle = TitleNormalizer.NormalizeTitle(episodeTitle);
         var languages = TitleNormalizer.DetectLanguages(episodeTitle);
         var resolution = TitleNormalizer.DetectResolution(episodeTitle);
 
-        var tmdbDetails = TmdbService.GetTmdbMovieDetailsByTitleAsync(normalizedTitle, null).GetAwaiter().GetResult();
+        var tmdbDetails = TmdbService.GetTmdbDetailsByTitleAsync(normalizedTitle, null).GetAwaiter().GetResult();
 
         var item = new MediaItem
         {
@@ -114,8 +160,8 @@ public abstract class BaseEpisodeExtractor : IEpisodeExtractor
             Resolution = resolution,
             Type = type,
             ImdbId = tmdbDetails?.ImdbId,
-            PublishDate = tmdbDetails?.ReleaseDate ?? DateTime.UtcNow,
-            Guid = Guid.NewGuid().ToString()
+            ReleaseDate = tmdbDetails?.ReleaseDate ?? DateTime.UtcNow,
+            Guid = link
         };
 
         if (link.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
@@ -140,7 +186,44 @@ public abstract class BaseEpisodeExtractor : IEpisodeExtractor
         return item;
     }
 
-    protected virtual long ParseFileSize(string? sizeText)
+    public virtual HtmlNode? GetDownloadSection(HtmlDocument doc)
+    {
+        foreach (var selector in Configuration.DownloadSectionSelectors)
+        {
+            var node = doc.DocumentNode.SelectSingleNode(selector);
+            if (node != null)
+                return node;
+        }
+        return doc.DocumentNode;
+    }
+
+    public virtual IEnumerable<HtmlNode> GetEpisodeParagraphs(HtmlNode downloadSection)
+    {
+        foreach (var selector in Configuration.EpisodeParagraphSelectors)
+        {
+            var nodes = downloadSection.SelectNodes(selector);
+            if (nodes != null && nodes.Count > 0)
+                return nodes;
+        }
+        return Enumerable.Empty<HtmlNode>();
+    }
+
+    
+
+    public virtual string BuildEpisodeTitle(string seriesTitle, string? seasonNumber, string? episodeNumber)
+    {
+        var cleanSeriesTitle = Regex.Replace(seriesTitle, @"\s*\d+[ªa]\s*Temporada\s*", " ", RegexOptions.IgnoreCase).Trim();
+        cleanSeriesTitle = Regex.Replace(cleanSeriesTitle, @"\s*Torrent\s*Download\s*$", "", RegexOptions.IgnoreCase).Trim();
+        
+        if (!string.IsNullOrEmpty(episodeNumber))
+        {
+            return $"{cleanSeriesTitle} S{seasonNumber?.PadLeft(2, '0') ?? "01"}E{episodeNumber.PadLeft(2, '0')}";
+        }
+        
+        return $"{cleanSeriesTitle} Episode";
+    }
+
+    public virtual long ParseFileSize(string? sizeText)
     {
         if (string.IsNullOrWhiteSpace(sizeText))
             return 0;
@@ -164,8 +247,7 @@ public abstract class BaseEpisodeExtractor : IEpisodeExtractor
             normalized = normalized.Replace("KB", "").Trim();
         }
 
-        if (double.TryParse(normalized, System.Globalization.NumberStyles.Any, 
-            System.Globalization.CultureInfo.InvariantCulture, out var value))
+        if (double.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out var value))
         {
             return (long)(value * multiplier);
         }
@@ -173,7 +255,7 @@ public abstract class BaseEpisodeExtractor : IEpisodeExtractor
         return 0;
     }
 
-    protected virtual DateTime ParseDate(string? dateText)
+    public virtual DateTime ParseDate(string? dateText)
     {
         if (string.IsNullOrWhiteSpace(dateText))
             return DateTime.UtcNow;
@@ -190,7 +272,7 @@ public abstract class BaseEpisodeExtractor : IEpisodeExtractor
 
         foreach (var format in formats)
         {
-            if (DateTime.TryParseExact(dateText, format, null, System.Globalization.DateTimeStyles.None, out var date))
+            if (DateTime.TryParseExact(dateText, format, null, DateTimeStyles.None, out var date))
             {
                 return date;
             }
@@ -202,5 +284,107 @@ public abstract class BaseEpisodeExtractor : IEpisodeExtractor
         }
 
         return DateTime.UtcNow;
+    }
+
+    private HtmlNode? GetInfoSection(HtmlDocument doc)
+    {
+        foreach (var selector in Configuration.InfoSectionSelectors)
+        {
+            var node = doc.DocumentNode.SelectSingleNode(selector);
+            if (node != null)
+                return node;
+        }
+        return doc.DocumentNode;
+    }
+
+    private Dictionary<string, string> ExtractInfoBlock(HtmlNode pNode)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var strongNodes = pNode.SelectNodes(".//strong");
+        if (strongNodes == null)
+            return result;
+
+        result["Título"] = strongNodes[1].InnerHtml.Trim();
+
+        foreach (var strong in strongNodes)
+        {
+            var key = strong.InnerText
+                .Replace(":", "")
+                .Replace(",", "")
+                .Trim();
+
+            var valueNode = strong
+                .SelectSingleNode("following-sibling::text()[1]");
+
+            if (valueNode == null)
+                continue;
+
+            var value = HtmlEntity.DeEntitize(valueNode.InnerText).Trim();
+
+            if (!string.IsNullOrWhiteSpace(key))
+            {
+                result[key] = value;
+            }
+        }
+
+        return result;
+    }
+
+    public void EnrichMediaItemAsync(MediaItem item, string detailUrl, string html, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            Logger.LogDebug("Enriching item from detail page: {Url}", detailUrl);
+
+            var doc = new HtmlDocument();
+            doc.LoadHtml(html);
+
+            var infoSection = GetInfoSection(doc);
+            var infoBlock = ExtractInfoBlock(infoSection);
+
+            // Extract size
+            var titleText = TitleNormalizer.NormalizeTitle(infoBlock.GetValueOrDefault("Título"));
+            if (!string.IsNullOrEmpty(titleText))
+            {
+                item.Title = titleText;
+            }
+
+            // Extract size
+            var sizeText = MetadataExtractor.ExtractSize(infoBlock.GetValueOrDefault("Tamanho"));
+            if (!string.IsNullOrEmpty(sizeText))
+            {
+                var size = ParseFileSize(sizeText);
+                if (size > 0)
+                {
+                    item.FileSize = size;
+                }
+            }
+
+            // Extract format
+            var format = MetadataExtractor.ExtractFormat(infoBlock.GetValueOrDefault("Formato"));
+            if (!string.IsNullOrEmpty(format))
+            {
+                item.Format = format;
+            }
+
+            // Extract quality/resolution
+            var quality = MetadataExtractor.ExtractQuality(infoBlock.GetValueOrDefault("Qualidade"));
+            if (!string.IsNullOrEmpty(quality))
+            {
+                item.Resolution = quality;
+            }
+
+            // Extract languages
+            var languages = MetadataExtractor.ExtractLanguages(infoBlock.GetValueOrDefault("Idioma"));
+            if (languages.Any())
+            {
+                item.Languages = languages;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error enriching item from detail page {Url}", detailUrl);
+        }
     }
 }

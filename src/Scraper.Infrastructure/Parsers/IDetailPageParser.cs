@@ -10,7 +10,7 @@ public interface IDetailPageParser
     /// <summary>
     /// Enriches a MediaItem with information extracted from the detail page HTML
     /// </summary>
-    Task EnrichMediaItemAsync(MediaItem item, string detailUrl, string html, CancellationToken cancellationToken = default);
+    void EnrichMediaItem(MediaItem item, string detailUrl, string html, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Parses a file size string (e.g. "2.44 GB", "700 MB") and converts it to bytes.

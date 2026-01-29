@@ -7,11 +7,9 @@ namespace Scraper.Core.Normalizers;
 
 public class TitleNormalizer : ITitleNormalizer
 {
-    private static readonly Regex ResolutionRegex = new(@"(?i)(\d{3,4}p|2160p|1080p|720p|480p|360p)", RegexOptions.Compiled);
-    private static readonly Regex YearRegex = new(@"\b(19|20)\d{2}\b", RegexOptions.Compiled);
-    private static readonly Regex SeasonEpisodeRegex = new(@"(?i)(s\d{1,2}e\d{1,2}|season\s*\d+|episode\s*\d+)", RegexOptions.Compiled);
+    private readonly Regex ResolutionRegex = new(@"(?i)(\d{3,4}p|2160p|1080p|720p|480p|360p)", RegexOptions.Compiled);
 
-    public string NormalizeTitle(string title, MediaType type)
+    public string NormalizeTitle(string? title = "")
     {
         if (string.IsNullOrWhiteSpace(title))
             return string.Empty;
@@ -39,9 +37,9 @@ public class TitleNormalizer : ITitleNormalizer
         var title = item.NormalizedTitle;
 
         // Remove year
-        if (item.PublishDate != default)
+        if (item.ReleaseDate != default)
         {
-            title = Regex.Replace(title, $@"\(?{item.PublishDate.Year}\)?", "", RegexOptions.IgnoreCase);
+            title = Regex.Replace(title, $@"\(?{item.ReleaseDate.Year}\)?", "", RegexOptions.IgnoreCase);
         }
 
         // Tokens to remove (format + resolution)
@@ -80,12 +78,6 @@ public class TitleNormalizer : ITitleNormalizer
             .ToTitleCase(normalizedTitle.ToLowerInvariant());
 
         return normalizedTitle;
-    }
-
-    public MediaLanguage DetectLanguage(string title)
-    {
-        var languages = DetectLanguages(title);
-        return languages.FirstOrDefault();
     }
 
     public List<MediaLanguage> DetectLanguages(string title)
@@ -153,7 +145,7 @@ public class TitleNormalizer : ITitleNormalizer
             parts.Add(item.NormalizedTitle);
 
         // Add year if available (extract from title or use current year as fallback)
-        parts.Add($"({item.PublishDate.Year})");
+        parts.Add($"({item.ReleaseDate.Year})");
 
         // Add resolution
         if (!string.IsNullOrWhiteSpace(item.Resolution))
@@ -172,35 +164,14 @@ public class TitleNormalizer : ITitleNormalizer
         return string.Join(" ", parts).Trim().Replace("/", "");
     }
 
-    private static string DetectFormat(string title)
-    {
-        if (string.IsNullOrWhiteSpace(title))
-            return string.Empty;
-
-        var lowerTitle = title.ToLowerInvariant();
-
-        if (lowerTitle.Contains("bluray") || lowerTitle.Contains("bdrip"))
-            return "BluRay";
-        if (lowerTitle.Contains("web-dl") || lowerTitle.Contains("webdl"))
-            return "WEB-DL";
-        if (lowerTitle.Contains("webrip") || lowerTitle.Contains("web-rip"))
-            return "WEBRip";
-        if (lowerTitle.Contains("dvdrip"))
-            return "DVDRip";
-        if (lowerTitle.Contains("hdtv"))
-            return "HDTV";
-
-        return "WEB-DL";
-    }
-
-    private static readonly string[] GarbageTerms =
+    private readonly string[] GarbageTerms =
     {
         "dual áudio", "torrent", "dublado", "dual", "legendado",
         "download", "web-dl", "bluray", "brrip", "hdrip",
         "x264", "x265", "h264", "h265"
     };
 
-    public static string CleanTitleForTmdb(string rawTitle)
+    public string CleanTitleForTmdb(string rawTitle)
     {
         var title = rawTitle.ToLowerInvariant();
 
@@ -244,7 +215,7 @@ public class TitleNormalizer : ITitleNormalizer
     //};
 
     //    // 2 ano
-    //    parts.Add(item.PublishDate.Year.ToString());
+    //    parts.Add(item.ReleaseDate.Year.ToString());
 
     //    // 3 resolu��o
     //    if (!string.IsNullOrWhiteSpace(item.Resolution))
@@ -264,7 +235,7 @@ public class TitleNormalizer : ITitleNormalizer
     //    return string.Join(".", parts);
     //}
 
-    private static string GenerateLanguageTag(List<MediaLanguage> languages)
+    private string GenerateLanguageTag(List<MediaLanguage> languages)
     {
         var language = "";
         if (languages == null || languages.Count == 0)

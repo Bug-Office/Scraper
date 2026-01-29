@@ -8,7 +8,7 @@ public class MediaItem
     public string MagnetLink { get; set; } = string.Empty;
     public string TorrentLink { get; set; } = string.Empty;
     public long FileSize { get; set; }
-    public DateTime PublishDate { get; set; }
+    public DateTime ReleaseDate { get; set; }
     public string Resolution { get; set; } = string.Empty;
     public string Format { get; set; } = string.Empty;
     public List<MediaLanguage> Languages { get; set; } = new();
