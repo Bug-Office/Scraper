@@ -37,3 +37,10 @@ public enum MediaType
     Unknown
 }
 
+public class MediaLanguageInfo
+{
+    public string Primary { get; set; } = "English";
+    public string Audio { get; set; } = "en";
+    public bool IsDual { get; set; }
+}
+

@@ -21,31 +21,10 @@ public class TorznabService
     }
 
     public async Task<TorznabRss> SearchAsync(
-        string query, 
-        string? imdbId = null, 
-        MediaType? type = null, 
-        string? baseUrl = null,
-        string? offset = null,
-        string? limit = null,
-        string? skipDatabase = null,
-        string? apiKey = null,
-        CancellationToken cancellationToken = default)
+        SearchRequest request,
+        CancellationToken cancellationToken = default
+    )
     {
-        var request = new SearchRequest
-        {
-            Query = query,
-            ImdbId = imdbId,
-            Type = type
-        };
-
-        if (!string.IsNullOrEmpty(offset))
-            request.Offset = int.Parse(offset);
-
-        if (!string.IsNullOrEmpty(limit))
-            request.Limit = int.Parse(limit);
-
-        if (!string.IsNullOrEmpty(skipDatabase))
-            request.SkipDatabase = bool.Parse(skipDatabase);
 
         var items = await _scraperService.SearchAsync(request, cancellationToken);
 
@@ -56,8 +35,8 @@ public class TorznabService
                 Title = "Media Scraper",
                 Description = "Torznab-compatible media scraper",
                 Link = string.Empty,
-                Language = "en-us",
-                Items = items.Select(item => ConvertToTorznabItem(item, baseUrl, apiKey)).ToList()
+                Language = "pt-br",
+                Items = items.Select(item => ConvertToTorznabItem(item)).ToList()
             }
         };
 
@@ -104,13 +83,15 @@ public class TorznabService
     //    return torznabItem;
     //}
 
-    private TorznabItem ConvertToTorznabItem(MediaItem item, string? baseUrl = null, string? apiKey = null)
+    private TorznabItem ConvertToTorznabItem(MediaItem item)
     {
         var magnet = item.MagnetLink;
 
         var fileSize = item.FileSize > 0
             ? item.FileSize
             : 4_000_000_000; // fallback seguro
+
+        var mediaLanguageInfo = _titleNormalizer.BuildLanguageInfo(item.Languages);
 
         var torznabItem = new TorznabItem
         {
@@ -147,10 +128,21 @@ public class TorznabService
             {
                 new() { Name = "indexer", Value = item.Scraper },
                 new() { Name = "source", Value = "torrent" },
+
+                //IDs
                 new() { Name = "imdbId", Value = item.ImdbId ?? "" },
                 new() { Name = "tmdbId", Value = item.TmdbId ?? "" },
-                new() { Name = "category", Value = "2000" },
-                new() { Name = "tag", Value = item.Scraper },
+
+                //CATEGORIA
+                new() { Name = "category", Value = item.Type == MediaType.Movie ? "2000" : "5000" },
+
+                //IDIOMA (ESSENCIAL)
+                new() { Name = "language", Value = mediaLanguageInfo.Primary },
+                new() { Name = "audioLanguage", Value = mediaLanguageInfo.Audio },
+
+                //EXTRA (ajuda parsing)
+                new() { Name = "tag", Value = mediaLanguageInfo.IsDual ? "dual" : "" },
+
                 new() { Name = "genre", Value = "" },
                 new() { Name = "seeders", Value = "1" },
                 new() { Name = "grabs", Value = "1" },

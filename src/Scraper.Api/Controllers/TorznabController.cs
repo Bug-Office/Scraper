@@ -27,22 +27,28 @@ public class TorznabController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> Get([FromQuery] string? t, [FromQuery] string? q, 
-        [FromQuery] string? imdbid, [FromQuery] string? season, [FromQuery] string? episode,
-        [FromQuery] string? apikey, [FromQuery] string? cat, [FromQuery] string? extended,
-        [FromQuery] string? offset, [FromQuery] string? limit, [FromQuery] string? skipDatabase)
+    public async Task<IActionResult> Get()
     {
-        var typeLower = (t ?? string.Empty).ToLowerInvariant();
-        var qValue = q ?? string.Empty;
-        var imdbId = imdbid ?? string.Empty;
-        var seasonValue = season ?? string.Empty;
-        var episodeValue = episode ?? string.Empty;
-        var apiKey = apikey ?? string.Empty;
-        var catValue = cat ?? string.Empty;
-        var extendedValue = extended ?? string.Empty;
-        var offsetValue = offset ?? string.Empty;
-        var limitValue = limit ?? string.Empty;
-        var skipDatabaseValue = skipDatabase ?? string.Empty;
+        var query = Request.Query
+         .ToDictionary(k => k.Key.ToLower(), v => v.Value.ToString());
+
+        //parametros principais
+        var type = query.GetValueOrDefault("t") ?? string.Empty;
+        var q = query.GetValueOrDefault("q") ?? string.Empty;
+
+        var imdbId = query.GetValueOrDefault("imdbid") ?? string.Empty;
+        var tvdbId = query.GetValueOrDefault("tvdbid") ?? string.Empty;
+
+        var season = query.GetValueOrDefault("season");
+        var episode = query.GetValueOrDefault("ep") ?? query.GetValueOrDefault("episode");
+
+        var apiKey = query.GetValueOrDefault("apikey");
+        var cat = query.GetValueOrDefault("cat");
+        var extended = query.GetValueOrDefault("extended");
+
+        var offset = query.GetValueOrDefault("offset");
+        var limit = query.GetValueOrDefault("limit");
+        var skipDatabase = query.GetValueOrDefault("skipdatabase");
 
         // Validate API key if configured
         var config = await _configService.GetConfigurationAsync();
@@ -55,6 +61,7 @@ public class TorznabController : ControllerBase
             }
         }
 
+        var typeLower = type.ToLowerInvariant();
         // Handle caps endpoint (capabilities)
         if (typeLower == "caps")
         {
@@ -95,9 +102,9 @@ public class TorznabController : ControllerBase
 
         // Parse categories if provided (filter results by category)
         var categories = new List<int>();
-        if (!string.IsNullOrEmpty(catValue))
+        if (!string.IsNullOrEmpty(cat))
         {
-            var catParts = catValue.Split(',', StringSplitOptions.RemoveEmptyEntries);
+            var catParts = cat.Split(',', StringSplitOptions.RemoveEmptyEntries);
             foreach (var catPart in catParts)
             {
                 if (int.TryParse(catPart.Trim(), out var catId))
@@ -109,26 +116,42 @@ public class TorznabController : ControllerBase
 
         try
         {
+            var request = new SearchRequest
+            {
+                Query = q,
+                ImdbId = imdbId,
+                TvdbId = tvdbId,
+                Type = mediaType
+            };
+
+            if (int.TryParse(offset, out var offsetNumber))
+                request.Offset = offsetNumber;
+
+            if (int.TryParse(limit, out var limitNumber))
+                request.Limit = limitNumber;
+
+            if (int.TryParse(season, out var seasonNumber))
+                request.Season = seasonNumber;
+
+            if (int.TryParse(episode, out var episodeNumber))
+                request.Episode = episodeNumber;
+
+            if (!string.IsNullOrEmpty(skipDatabase))
+                request.SkipDatabase = bool.Parse(skipDatabase);
+
             // Get base URL for enclosure generation
             var baseUrl = config.BaseUrlOverride;
             if (string.IsNullOrEmpty(baseUrl))
             {
-                var request = _httpContextAccessor.HttpContext?.Request;
-                if (request != null)
+                var req = _httpContextAccessor.HttpContext?.Request;
+                if (req != null)
                 {
-                    baseUrl = $"{request.Scheme}://{request.Host}";
+                    baseUrl = $"{req.Scheme}://{req.Host}";
                 }
             }
 
             // Perform search
-            var rss = await _torznabService.SearchAsync(qValue,
-                imdbId,
-                mediaType,
-                baseUrl,
-                offsetValue,
-                limitValue,
-                skipDatabaseValue,
-                config.ApiKey);
+            var rss = await _torznabService.SearchAsync(request);
 
             // Filter by categories if specified
             if (categories.Any())

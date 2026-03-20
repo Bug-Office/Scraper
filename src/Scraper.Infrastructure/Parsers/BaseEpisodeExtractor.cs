@@ -39,6 +39,7 @@ public class BaseEpisodeExtractor : IEpisodeExtractor
             string detailUrl,
             string seriesTitle,
             string html,
+            string scrapperName,
             CancellationToken cancellationToken = default)
     {
         try
@@ -100,7 +101,8 @@ public class BaseEpisodeExtractor : IEpisodeExtractor
                         magnet,
                         sizeText,
                         dateText,
-                        MediaType.TvShow
+                        MediaType.TvShow,
+                        scrapperName
                     );
 
                     EnrichMediaItemAsync(episode, detailUrl, html, cancellationToken);
@@ -143,7 +145,8 @@ public class BaseEpisodeExtractor : IEpisodeExtractor
         string link,
         string? sizeText,
         string? dateText,
-        MediaType type)
+        MediaType type,
+        string srapper)
     {
         var normalizedTitle = TitleNormalizer.NormalizeTitle(episodeTitle);
         var languages = TitleNormalizer.DetectLanguages(episodeTitle);
@@ -161,7 +164,8 @@ public class BaseEpisodeExtractor : IEpisodeExtractor
             Type = type,
             ImdbId = tmdbDetails?.ImdbId,
             ReleaseDate = tmdbDetails?.ReleaseDate ?? DateTime.UtcNow,
-            Guid = link
+            Guid = link,
+            Scraper = srapper
         };
 
         if (link.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
@@ -219,7 +223,12 @@ public class BaseEpisodeExtractor : IEpisodeExtractor
         {
             return $"{cleanSeriesTitle} S{seasonNumber?.PadLeft(2, '0') ?? "01"}E{episodeNumber.PadLeft(2, '0')}";
         }
-        
+
+        if (!string.IsNullOrEmpty(seasonNumber))
+        {
+            return $"{cleanSeriesTitle} S{seasonNumber?.PadLeft(2, '0') ?? "01"}";
+        }
+
         return $"{cleanSeriesTitle} Episode";
     }
 

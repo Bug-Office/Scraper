@@ -14,5 +14,6 @@ public interface IEpisodeExtractor
         string detailUrl, 
         string seriesTitle, 
         string html, 
+        string scraperName,
         CancellationToken cancellationToken = default);
 }

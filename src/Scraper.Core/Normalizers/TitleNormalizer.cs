@@ -142,7 +142,12 @@ public class TitleNormalizer : ITitleNormalizer
 
         // Add normalized title
         if (!string.IsNullOrWhiteSpace(item.NormalizedTitle))
-            parts.Add(item.NormalizedTitle);
+        {
+            var partsTitle = item.NormalizedTitle.Replace(":", " ")
+                                                    .Split(" ")
+                                                    .Where(pt => !string.IsNullOrWhiteSpace(pt));
+            parts.AddRange(partsTitle);
+        }
 
         // Add year if available (extract from title or use current year as fallback)
         parts.Add($"({item.ReleaseDate.Year})");
@@ -151,17 +156,69 @@ public class TitleNormalizer : ITitleNormalizer
         if (!string.IsNullOrWhiteSpace(item.Resolution))
             parts.Add($"{item.Resolution}");
 
-        // Add language tag
-        var languageTag = GenerateLanguageTag(item.Languages);
-        if (!string.IsNullOrWhiteSpace(languageTag))
-            parts.Add(languageTag);
+        //// Add language tag
+        //var languageTag = GenerateLanguageTag(item.Languages);
+        //if (!string.IsNullOrWhiteSpace(languageTag))
+        //    parts.Add(languageTag);
 
-        //// Add format (BluRay, WEB-DL, etc.) if detected
-        //var format = DetectFormat(item.Title);
-        //if (!string.IsNullOrWhiteSpace(format))
-        //    parts.Add($"{format}");
+        return string.Join(".", parts).Trim().Replace("/", "");
+    }
 
-        return string.Join(" ", parts).Trim().Replace("/", "");
+    public MediaLanguageInfo BuildLanguageInfo(List<MediaLanguage> languages)
+    {
+        if (languages == null || languages.Count == 0)
+        {
+            return new MediaLanguageInfo
+            {
+                Primary = "English",
+                Audio = "en",
+                IsDual = false
+            };
+        }
+
+        var normalized = languages.Distinct().ToList();
+
+        // Mapeamento padrão Sonarr-friendly
+        var map = new Dictionary<MediaLanguage, string>
+    {
+        { MediaLanguage.Portuguese, "pt-BR" },
+        { MediaLanguage.English, "en" },
+        { MediaLanguage.Japanese, "ja" },
+        { MediaLanguage.Unknown, "en" }
+    };
+
+        var audioList = normalized
+            .Where(map.ContainsKey)
+            .Select(l => map[l])
+            .Distinct()
+            .ToList();
+
+        var isMulti = audioList.Count > 1;
+
+        // Regra de prioridade
+        string primary;
+
+        if (isMulti)
+        {
+            primary = "Multi"; //importante pro Sonarr/Radarr
+        }
+        else
+        {
+            primary = normalized.First() switch
+            {
+                MediaLanguage.Portuguese => "Portuguese",
+                MediaLanguage.English => "English",
+                MediaLanguage.Japanese => "Japanese",
+                _ => "English"
+            };
+        }
+
+        return new MediaLanguageInfo
+        {
+            Primary = primary,
+            Audio = string.Join(",", audioList), // ex: pt-BR,en
+            IsDual = isMulti
+        };
     }
 
     private readonly string[] GarbageTerms =
@@ -175,8 +232,8 @@ public class TitleNormalizer : ITitleNormalizer
     {
         var title = rawTitle.ToLowerInvariant();
 
-        foreach (var term in GarbageTerms)
-            title = Regex.Replace(title, $@"\b{Regex.Escape(term)}\b", "", RegexOptions.IgnoreCase);
+        //foreach (var term in GarbageTerms)
+        //    title = Regex.Replace(title, $@"\b{Regex.Escape(term)}\b", "", RegexOptions.IgnoreCase);
 
         // remove [tags]
         title = Regex.Replace(title, @"\[[^\]]*\]", "");
@@ -239,7 +296,7 @@ public class TitleNormalizer : ITitleNormalizer
     {
         var language = "";
         if (languages == null || languages.Count == 0)
-            language += "port eng"; // Default
+            language += "DUAL"; // Default
 
         var hasPortuguese = languages?.Contains(MediaLanguage.Portuguese) ?? false;
         var hasEnglish = languages?.Contains(MediaLanguage.English) ?? false;
@@ -247,15 +304,17 @@ public class TitleNormalizer : ITitleNormalizer
         var hasUnknown = languages?.Contains(MediaLanguage.Unknown) ?? false;
 
         if (hasPortuguese)
-            language += " por";
+            language += " portuguese";
         if (hasEnglish)
-            language += " eng";
+            language += " english";
         if (hasJapanese)
-            language += " jap";
+            language += " japapanese";
         if (hasUnknown)
-            language += " eng";
+            language += " english";
 
         return language;
     }
+
+    
 }
 

@@ -34,8 +34,8 @@ public class ConfigurableTorrentScraper : BaseScraper
         ILogger logger,
         ITmdbService tmdbService,
         ILoggerFactory loggerFactory,
-        IFlareSolverrService? flareSolverrService = null,
-        IMediaItemRepository? mediaItemRepository = null)
+        IFlareSolverrService flareSolverrService,
+        IMediaItemRepository mediaItemRepository)
         : base(
             HttpClientFactory.CreateClient(configuration.BaseUrl),
             titleNormalizer,
@@ -173,7 +173,7 @@ public class ConfigurableTorrentScraper : BaseScraper
                                     .ToList();
 
             // Filter out items that already exist in database and save new ones
-            if (!request.SkipDatabase && allItems.Any() && MediaItemRepository != null)
+            if (!request.SkipDatabase && allItems.Any())
             {
                 var pageUrls = allItems.Select(i => i.PageUrl).Distinct().ToList();
                 var existingItems = new List<MediaItem>();
@@ -183,7 +183,7 @@ public class ConfigurableTorrentScraper : BaseScraper
                 {
                     try
                     {
-                        var existing = await MediaItemRepository.GetByPageUrlAsync(url);
+                        var existing = await MediaItemRepository!.GetByPageUrlAsync(url);
                         if (existing.Any())
                         {
                             existingItems.AddRange(existing);
@@ -203,7 +203,7 @@ public class ConfigurableTorrentScraper : BaseScraper
                 {
                     try
                     {
-                        await MediaItemRepository.SaveRangeAsync(newItems);
+                        await MediaItemRepository!.SaveRangeAsync(newItems);
                         Logger.LogDebug("Saved {Count} new items to database in batch", newItems.Count);
                     }
                     catch (Exception ex)
@@ -271,7 +271,7 @@ public class ConfigurableTorrentScraper : BaseScraper
             titleText = CleanTitle(titleText);
 
             // Check if already exists in database (only if skipDatabase is false)
-            if (!skipDatabase && MediaItemRepository != null)
+            if (!skipDatabase)
             {
                 var existingItems = await MediaItemRepository.GetByPageUrlAsync(detailLink);
                 if (existingItems.Any())
@@ -358,7 +358,7 @@ public class ConfigurableTorrentScraper : BaseScraper
             if (!episodes.Any())
             {
                 var html = await FetchHtmlAsync(pageUrl, cancellationToken);
-                episodes = await _episodeExtractor.ExtractEpisodesAsync(pageUrl, title, html, cancellationToken);
+                episodes = await _episodeExtractor.ExtractEpisodesAsync(pageUrl, title, html, Name, cancellationToken);
 
                 if (MediaItemRepository != null && episodes.Any())
                 {

@@ -12,16 +12,16 @@ public abstract class BaseScraper : IScraper
     protected readonly ITitleNormalizer TitleNormalizer;
     protected readonly HttpClient HttpClient;
     protected readonly ITmdbService TmdbService;
-    protected readonly IFlareSolverrService? FlareSolverrService;
-    protected readonly IMediaItemRepository? MediaItemRepository;
+    protected readonly IFlareSolverrService FlareSolverrService;
+    protected readonly IMediaItemRepository MediaItemRepository;
 
     protected BaseScraper(
         HttpClient httpClient,
         ITitleNormalizer titleNormalizer,
         ILogger logger,
         ITmdbService tmdbService,
-        IFlareSolverrService? flareSolverrService = null,
-        IMediaItemRepository? mediaItemRepository = null)
+        IFlareSolverrService flareSolverrService,
+        IMediaItemRepository mediaItemRepository)
     {
         HttpClient = httpClient;
         TitleNormalizer = titleNormalizer;
