@@ -200,7 +200,7 @@ public class TitleNormalizer : ITitleNormalizer
 
         if (isMulti)
         {
-            primary = "Multi"; //importante pro Sonarr/Radarr
+            primary = "Portuguese"; //importante pro Sonarr/Radarr
         }
         else
         {
