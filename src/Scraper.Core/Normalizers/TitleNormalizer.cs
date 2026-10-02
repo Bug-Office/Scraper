@@ -180,12 +180,12 @@ public class TitleNormalizer : ITitleNormalizer
 
         // Mapeamento padrão Sonarr-friendly
         var map = new Dictionary<MediaLanguage, string>
-    {
-        { MediaLanguage.Portuguese, "pt-BR" },
-        { MediaLanguage.English, "en" },
-        { MediaLanguage.Japanese, "ja" },
-        { MediaLanguage.Unknown, "en" }
-    };
+        {
+            { MediaLanguage.Portuguese, "pt-BR" },
+            { MediaLanguage.English, "en" },
+            { MediaLanguage.Japanese, "ja" },
+            { MediaLanguage.Unknown, "en" }
+        };
 
         var audioList = normalized
             .Where(map.ContainsKey)
@@ -200,7 +200,7 @@ public class TitleNormalizer : ITitleNormalizer
 
         if (isMulti)
         {
-            primary = "Portuguese"; //importante pro Sonarr/Radarr
+            primary = "Dual"; //importante pro Sonarr/Radarr
         }
         else
         {

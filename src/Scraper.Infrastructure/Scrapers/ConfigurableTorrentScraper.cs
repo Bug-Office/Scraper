@@ -67,13 +67,27 @@ public class ConfigurableTorrentScraper : BaseScraper
     {
         Logger.LogInformation("Searching Query: '{Query}' | ImdbId: '{ImdbId}' on '{ScraperName}'", request.Query, request.ImdbId, Name);
 
+        var scraperRequest = new SearchRequest
+        {
+            Query = request.Query,
+            Offset = request.Offset,
+            Limit = request.Limit,
+            ImdbId = request.ImdbId,
+            TvdbId = request.TvdbId,
+            SkipDatabase = request.SkipDatabase,
+            Type = request.Type,
+            Season = request.Season,
+            Episode = request.Episode
+        };
+
         try
         {
-            if (!string.IsNullOrEmpty(request.ImdbId))
+            if (!string.IsNullOrEmpty(scraperRequest.ImdbId))
             {
-                var results = await SearchByImdbIdAsync(request, cancellationToken = default);
+                var results = await SearchByImdbIdAsync(scraperRequest, cancellationToken);
                 return results;
             }
+
         }
         catch (Exception ex)
         {
@@ -83,10 +97,23 @@ public class ConfigurableTorrentScraper : BaseScraper
 
         try
         {
-            var tmdbmovieDetails = TmdbService.GetTmdbDetailsByTitleAsync(request.Query, null, request.Type).GetAwaiter().GetResult();
-            request.Query = tmdbmovieDetails?.Name ?? request.Query;
+            var tmdbDetails = await TmdbService.GetTmdbDetailsByTitleAsync(
+                scraperRequest.Query,
+                null,
+                scraperRequest.Type,
+                cancellationToken);
 
-            var results = await SearchByQueryAsync(request, cancellationToken = default);
+            var resolvedQuery = scraperRequest.Type switch
+            {
+                MediaType.Movie => (string?)tmdbDetails?.Title,
+                MediaType.TvShow => (string?)tmdbDetails?.Name,
+                _ => null
+            };
+
+            if (!string.IsNullOrWhiteSpace(resolvedQuery))
+                scraperRequest.Query = resolvedQuery;
+
+            var results = await SearchByQueryAsync(scraperRequest, cancellationToken, request.Query);
             return results;
         }
         catch (Exception ex)
@@ -110,7 +137,8 @@ public class ConfigurableTorrentScraper : BaseScraper
                 }
 
                 var tmdbmovieDetails = TmdbService.GetTmdbMovieDetailsByExternalSourceAsync(request.ImdbId, "imdb_id").GetAwaiter().GetResult();
-                request.Query = tmdbmovieDetails?.Title;
+                if (!string.IsNullOrWhiteSpace(tmdbmovieDetails?.Title))
+                    request.Query = tmdbmovieDetails.Title;
 
                 results = await SearchByQueryAsync(request, cancellationToken);
                 return results;
@@ -126,11 +154,19 @@ public class ConfigurableTorrentScraper : BaseScraper
     }
 
     public async Task<IEnumerable<MediaItem>> SearchByQueryAsync(SearchRequest request, CancellationToken cancellationToken = default)
+        => await SearchByQueryAsync(request, cancellationToken, request.Query);
+
+    private async Task<IEnumerable<MediaItem>> SearchByQueryAsync(
+        SearchRequest request,
+        CancellationToken cancellationToken,
+        string? originalQuery)
     {
 
         try
         {
-            var searchUrl = BuildSearchUrl(request.Query);
+            var searchUrl = string.IsNullOrWhiteSpace(request.Query)
+                ? _configuration.BaseUrl
+                : BuildSearchUrl(request.Query);
 
             Logger.LogDebug("Fetching search results from {Url}", searchUrl);
             string html;
@@ -151,12 +187,18 @@ public class ConfigurableTorrentScraper : BaseScraper
 
             var doc = ParseHtml(html);
             var resultNodes = FindResultNodes(doc);
+            var hasSearchTerm = !string.IsNullOrWhiteSpace(originalQuery) ||
+                !string.IsNullOrWhiteSpace(request.Query);
 
             // Parse items in parallel for better performance (but don't save yet)
             var parseTasks = resultNodes.Select(async node =>
             {
                 try
                 {
+                    var rawTitle = CleanTitle(ExtractTitle(node));
+                    if (hasSearchTerm && !IsRelevantTitle(rawTitle, originalQuery, request.Query))
+                        return Enumerable.Empty<MediaItem>();
+
                     var items = await ParseTorrentItemAsync(node, cancellationToken);
                     return items;
                 }
@@ -225,6 +267,44 @@ public class ConfigurableTorrentScraper : BaseScraper
             Logger.LogError(ex, "Error searching {ScraperName}", Name);
             return Enumerable.Empty<MediaItem>();
         }
+    }
+
+    private static bool IsRelevantTitle(string? title, params string?[] queries)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+            return false;
+
+        var normalizedTitle = NormalizeSearchTitle(title);
+        if (normalizedTitle.Length == 0)
+            return false;
+
+        foreach (var query in queries.Where(query => !string.IsNullOrWhiteSpace(query)))
+        {
+            var normalizedQuery = NormalizeSearchTitle(query!);
+            if (normalizedQuery.Length == 0)
+                continue;
+
+            if (normalizedTitle == normalizedQuery ||
+                normalizedTitle.StartsWith(normalizedQuery + " ", StringComparison.Ordinal) ||
+                normalizedTitle.Contains(" " + normalizedQuery + " ", StringComparison.Ordinal) ||
+                normalizedTitle.EndsWith(" " + normalizedQuery, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string NormalizeSearchTitle(string title)
+    {
+        title = Regex.Replace(
+            title,
+            @"(?i)\b(?:s\d{1,2}e\d{1,3}|season\s*\d+|temporada\s*\d+)\b",
+            " ");
+        return Regex.Replace(title, @"[^\p{L}\p{N}]+", " ")
+            .Trim()
+            .ToLowerInvariant();
     }
 
 
