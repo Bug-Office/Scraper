@@ -86,6 +86,46 @@
           "\\s*\\(\\d{4}\\)\\s*$"
         ]
       }
+    },
+    {
+      "name": "Baixetorrentshd",
+      "isEnabled": true,
+      "configuration": {
+        "baseUrl": "https://www.baixetorrentshd.net",
+        "searchUrlTemplate": "{BaseUrl}/?s={Query}",
+        "resultItemSelectors": [
+          "//article",
+          "//article[@class='movie-card']"
+        ],
+        "titleSelectors": [
+          ".//h3"
+        ],
+        "titleLinkSelectors": [
+          ".//h3//a",
+          ".//h3/a",
+          ".//a[contains(@href, 'baixetorrentshd.net')]",
+          ".//a[contains(@href, '/')]"
+        ],
+        "downloadSectionSelectors": [
+          "//div[@class='download-btn-wrapper']"
+        ],
+        "episodeParagraphSelectors": [
+          ".//a[@class='download-btn']",
+          ".//a[contains(., 'Episódio')]"
+        ],
+        "infoSectionSelectors": [
+          "//div[contains(@class, 'article-content')]/p",
+          "//div[contains(@class, 'conteudo')]"
+        ],
+        "titleCleanupPatterns": [
+          "(?i)\\s*Torrent\\s*Download\\s*$",
+          "(?i)\\s*Download\\s*$",
+          "(?i)\\s*Baixar\\s*$",
+          "\\s*\\(Filme de \\d{4}\\)\\s*$",
+          "\\s*\\(Série de \\d{4}\\)\\s*$",
+          "\\s*\\(\\d{4}\\)\\s*$"
+        ]
+      }
     }
   ],
   "defaultTemplate": {

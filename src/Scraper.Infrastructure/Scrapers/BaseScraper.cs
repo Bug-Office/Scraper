@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Scraper.Core.Interfaces;
 using Scraper.Core.Models;
 using Scraper.Infrastructure.Interfaces;
+using System.Globalization;
 
 namespace Scraper.Infrastructure.Scrapers;
 
@@ -150,11 +151,33 @@ public abstract class BaseScraper : IScraper
 
         var tmdbmovieDetails = TmdbService.GetTmdbDetailsByTitleAsync(item.NormalizedTitle, item.ReleaseDate.Year, item.Type).GetAwaiter().GetResult();
 
+        
+
+        
+
         item.Title = tmdbmovieDetails?.Title ?? item.Title;
         item.NormalizedTitle = tmdbmovieDetails?.Title ?? item.NormalizedTitle;
-        item.ReleaseDate = tmdbmovieDetails?.ReleaseDate ?? item.ReleaseDate;
         item.ImdbId = tmdbmovieDetails?.ImdbId.Split("tt").ElementAt(1);
         item.TmdbId = tmdbmovieDetails?.Id.ToString();
+
+        var formats = new[]
+                {
+            "yyyy-MM-dd",
+            "yyyy-MM-ddTHH:mm:ss",
+            "yyyy-MM-ddTHH:mm:ss.fff",
+            "dd/MM/yyyy"
+        };
+        DateTime releaseDate;
+
+        if (DateTime.TryParseExact(
+                tmdbmovieDetails?.ReleaseDate ?? string.Empty,
+                formats,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out releaseDate))
+        {
+            item.ReleaseDate = releaseDate;
+        }
     }
 }
 
